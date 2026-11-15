@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CareCircle - Collaborative elderly-care and medication-management platform.">
+  <title>{% block title %}CareCircle{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Skip Link for Keyboard & Screen Reader Users -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Live Announcer for Screen Readers -->
+  <div id="live-announcer" aria-live="polite" class="sr-only"></div>
+
+  <!-- Site Header -->
+  <header class="site-header" role="banner">
+    <div class="container header-content">
+      <a href="/" class="brand" aria-label="CareCircle Home">
+        <span class="brand-icon" aria-hidden="true">&#9829;</span>
+        <span class="brand-name">CareCircle</span>
+      </a>
+
+      <!-- Accessibility Toolbar -->
+      <div class="accessibility-controls" role="region" aria-label="Accessibility Settings">
+        <button id="toggle-contrast" class="btn-ctrl" type="button" aria-pressed="false" title="Toggle High Contrast Mode">
+          <span aria-hidden="true">&#9680;</span> Contrast
+        </button>
+        <button id="decrease-font" class="btn-ctrl" type="button" title="Decrease Font Size" aria-label="Decrease Font Size">
+          A-
+        </button>
+        <button id="increase-font" class="btn-ctrl" type="button" title="Increase Font Size" aria-label="Increase Font Size">
+          A+
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Landmark -->
+  <main id="main-content" role="main">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="container footer-content">
+      <p>&copy; 2026 CareCircle. Catalyst Solo AI Hackathon.</p>
+      <p>Accessible Elderly Care &amp; Medication Management</p>
+    </div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}CareCircle — Collaborative Elderly Care &amp; Medication Management{% endblock %}
+
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+  <span class="badge badge-catalyst">Catalyst 2026 Solo AI Hackathon</span>
+  <h1 id="hero-title">Collaborative Elderly Care &amp; Medication Management</h1>
+  <p class="lead">
+    CareCircle connects elders, primary caregivers, and family members in a unified care network.
+    With atomic duplicate-confirmation protection, elder-friendly accessibility, and Gemini-powered adherence insights.
+  </p>
+
+  <div class="cta-group" role="group" aria-label="Quick Actions">
+    <a href="/api/health" class="btn btn-primary" id="cta-health">
+      System Health Status
+    </a>
+    <span class="btn btn-secondary" aria-disabled="true" title="Authentication available in Phase 2">
+      Passcode Sign In (Phase 2)
+    </span>
+  </div>
+</section>
+
+<!-- Operational Transparency Notice -->
+<section class="notice-box" role="note" aria-labelledby="notice-title">
+  <h4 id="notice-title">&#9432; Operational Reality: Just-In-Time Escalation</h4>
+  <p>
+    Under the free-tier serverless architecture (Vercel Hobby &amp; Firebase Spark), missed-dose escalation operates via Just-In-Time (JIT) evaluation triggered during dashboard visits, client polling, or scheduled sync pings. Escalation does not guarantee real-time push alerts when no member is actively using the application or when external schedulers are inactive.
+  </p>
+</section>
+
+<!-- Core Architecture Pillars -->
+<section aria-labelledby="pillars-title">
+  <h2 id="pillars-title" class="sr-only">Core Architecture Pillars</h2>
+  <div class="grid-cards">
+    <article class="card">
+      <div class="card-icon" aria-hidden="true">&#128100;</div>
+      <h3>Elder Independence</h3>
+      <p>
+        High-contrast, large-touch interfaces designed specifically for senior cognitive ease. One-tap dose logging with clear color and shape pill recognition.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden="true">&#128737;</div>
+      <h3>Duplicate-Dose Lock</h3>
+      <p>
+        Atomic Firestore transactions prevent dangerous double-dosing. If an elder or caregiver confirms a dose, any simultaneous confirmation is immediately blocked.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden="true">&#128106;</div>
+      <h3>Caregiver &amp; Family Roles</h3>
+      <p>
+        Caregivers maintain prescription schedules and handle escalations. Family members stay informed with reassuring, read-only adherence activity timelines.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden="true">&#10024;</div>
+      <h3>Gemini Adherence Insights</h3>
+      <p>
+        Pattern-based adherence analysis that discovers behavioral trends (such as weekend schedule drift) with strict, hardcoded medical safety disclaimers.
+      </p>
+    </article>
+  </div>
+</section>
+{% endblock %}
