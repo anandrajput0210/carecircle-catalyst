@@ -76,9 +76,8 @@ def test_vercel_json_configuration():
         config = json.load(f)
 
     assert config.get("version") == 2
-    assert "builds" in config
-    assert config["builds"][0]["src"] == "api/index.py"
-    assert config["builds"][0]["use"] == "@vercel/python"
+    assert "functions" in config or "rewrites" in config
+    assert "api/index.py" in config.get("functions", {})
 
     # Verify functions config does not exceed limits
     functions = config.get("functions", {})
