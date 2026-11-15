@@ -1,5 +1,7 @@
-"""Live Firestore Integration Test: Document Write/Read, Circle Isolation, and Atomic Transactions."""
+"""Live Firestore Integration Test Suite: Document Write/Read, Application-Level Tenant Isolation, and Atomic Transactions."""
+import uuid
 import pytest
+from google.cloud import firestore
 from app.services.firestore import (
     get_firestore_client,
     verify_firestore_health,
@@ -10,118 +12,205 @@ from app.services.firestore import (
     DoseConflictError,
 )
 
+# Generate a full 32-character unique run UUID for complete document isolation per test execution
+TEST_RUN_UUID = uuid.uuid4().hex
+TEST_COLLECTION_NAME = "_live_verification_tests"
+CIRCLE_ALPHA_ID = f"test-alpha-{TEST_RUN_UUID}"
+CIRCLE_BETA_ID = f"test-beta-{TEST_RUN_UUID}"
 
-@pytest.mark.integration
-def test_live_firestore_lifecycle_and_isolation():
-    """
-    Live Firestore Verification:
-    1. Verifies connection to real Firestore database.
-    2. Writes a test document under circle 'circle-alpha'.
-    3. Reads back the test document and validates data integrity.
-    4. Enforces circle isolation: asserts 'circle-beta' context is rejected.
-    5. Tests atomic transaction wrapper: confirms dose, then verifies duplicate attempt raises DoseConflictError.
-    6. Cleans up test documents.
-    """
+
+@pytest.fixture(scope="module")
+def firestore_client():
+    """Fixture providing initialized Firestore client or skipping if unconfigured."""
     client = get_firestore_client()
     if client is None:
-        pytest.skip("Firestore client is unconfigured. Set FIREBASE_SERVICE_ACCOUNT_KEY_B64 or JSON to run live integration.")
+        pytest.skip("Firestore client is unconfigured. Set FIREBASE_SERVICE_ACCOUNT_KEY_B64 to run live integration.")
+    return client
 
-    test_collection = client.collection("_live_verification_tests")
-    circle_alpha_id = "test-live-alpha"
-    circle_beta_id = "test-live-beta"
 
-    doc_alpha_ref = test_collection.document(f"{circle_alpha_id}_doc1")
-    dose_doc_ref = test_collection.document(f"{circle_alpha_id}_med1_2026-11-15_08-00")
+@pytest.fixture(scope="module")
+def live_test_session(firestore_client):
+    """
+    Fixture tracking documents created in this specific test run.
+    Guarantees cleanup via try/finally even if test assertions or transactions fail.
+    Deletes strictly documents registered in this run, leaving all other data untouched.
+    Collects and reports cleanup errors explicitly instead of silently suppressing them.
+    """
+    created_doc_refs = []
+    collection = firestore_client.collection(TEST_COLLECTION_NAME)
+
+    def track(doc_ref):
+        created_doc_refs.append(doc_ref)
+        return doc_ref
+
+    cleanup_errors = []
 
     try:
-        # Step 1: Real document write
-        alpha_context = CircleSecurityContext(circle_alpha_id)
-        payload = alpha_context.validate_payload({
-            "test_key": "carecircle_live_verification",
-            "elder_name": "Eleanor Test",
-        })
-        doc_alpha_ref.set(payload)
-
-        # Step 2: Real document read
-        snapshot = doc_alpha_ref.get()
-        assert snapshot.exists, "Document write failed to persist in Firestore"
-        data = snapshot.to_dict()
-        assert data["elder_name"] == "Eleanor Test"
-        assert data["circle_id"] == circle_alpha_id
-
-        # Step 3: Tenant Isolation Verification (Circle A vs Circle B)
-        # Alpha context validates successfully
-        assert alpha_context.validate_document(data)["circle_id"] == circle_alpha_id
-
-        # Beta context MUST raise CircleIsolationViolation when accessing Alpha's document
-        beta_context = CircleSecurityContext(circle_beta_id)
-        with pytest.raises(CircleIsolationViolation):
-            beta_context.validate_document(data)
-
-        # Beta context cannot write a document claiming Alpha's circle
-        with pytest.raises(CircleIsolationViolation):
-            beta_context.validate_payload({"circle_id": circle_alpha_id, "data": "intruder"})
-
-        # Step 4: Real Firestore Transaction & Duplicate Confirmation Protection
-        # Seed initial pending dose
-        dose_doc_ref.set({
-            "circle_id": circle_alpha_id,
-            "med_id": "med1",
-            "med_name": "Amlodipine",
-            "status": "pending",
-            "scheduled_for": "2026-11-15T08:00:00Z",
-        })
-
-        # Run Transaction 1: Confirm dose
-        @client.transactional
-        def run_txn_1(transaction):
-            return execute_atomic_dose_confirmation(
-                transaction=transaction,
-                dose_ref=dose_doc_ref,
-                logged_by_member_id="caregiver-001",
-                logged_by_name="Sarah Nurse",
-                logged_by_role="caregiver",
-                notes="Morning dose taken with water",
-                server_timestamp="2026-11-15T08:02:00Z",
-            )
-
-        transaction_1 = client.transaction()
-        result_1 = run_txn_1(transaction_1)
-        assert result_1["status"] == "taken"
-        assert result_1["logged_by_name"] == "Sarah Nurse"
-
-        # Verify persisted state in Firestore
-        dose_snapshot = dose_doc_ref.get()
-        assert dose_snapshot.to_dict()["status"] == "taken"
-
-        # Run Transaction 2: Duplicate confirmation attempt on the same dose
-        @client.transactional
-        def run_txn_2(transaction):
-            return execute_atomic_dose_confirmation(
-                transaction=transaction,
-                dose_ref=dose_doc_ref,
-                logged_by_member_id="elder-001",
-                logged_by_name="Eleanor",
-                logged_by_role="elder",
-            )
-
-        transaction_2 = client.transaction()
-        with pytest.raises(DoseConflictError) as exc_info:
-            run_txn_2(transaction_2)
-
-        assert exc_info.value.existing_status == "taken"
-        assert "already recorded as 'taken'" in str(exc_info.value)
-        assert "Sarah Nurse" in str(exc_info.value)
-
+        yield {
+            "collection": collection,
+            "track": track,
+            "run_uuid": TEST_RUN_UUID,
+            "circle_alpha": CIRCLE_ALPHA_ID,
+            "circle_beta": CIRCLE_BETA_ID,
+        }
     finally:
-        # Step 5: Clean up test documents to keep database pristine
-        try:
-            doc_alpha_ref.delete()
-            dose_doc_ref.delete()
-        except Exception:
-            pass
+        # Guaranteed cleanup of only documents created in this test run
+        for ref in created_doc_refs:
+            try:
+                ref.delete()
+            except Exception as e:
+                # Capture document path and sanitized error type without printing credentials
+                cleanup_errors.append(f"{ref.path}: {type(e).__name__} ({str(e)[:120]})")
+
+        if cleanup_errors:
+            error_details = "; ".join(cleanup_errors)
+            pytest.fail(f"Test document cleanup encountered errors: {error_details}")
 
 
-if __name__ == "__main__":
-    test_live_firestore_lifecycle_and_isolation()
-    print("ALL LIVE FIRESTORE INTEGRATION CHECKS PASSED!")
+def test_01_live_firestore_connection(firestore_client):
+    """Test 1: Verify live connection and health status of Firestore database."""
+    health = verify_firestore_health()
+    assert health["configured"] is True, "Firestore should be configured"
+    assert health["status"] == "connected", f"Expected connected, got {health.get('status')}: {health.get('error')}"
+    assert health["project_id"] == "carecircle-catalyst"
+
+
+def test_02_live_document_write_and_read(live_test_session):
+    """
+    Test 2: Perform real document write and read on the live Firestore database.
+    Independently creates, verifies, and registers its own test document.
+    """
+    collection = live_test_session["collection"]
+    circle_alpha = live_test_session["circle_alpha"]
+    run_uuid = live_test_session["run_uuid"]
+
+    doc_id = f"{circle_alpha}_write_read_{run_uuid}"
+    doc_ref = live_test_session["track"](collection.document(doc_id))
+
+    # Step A: Real write with CircleSecurityContext payload validation
+    context = CircleSecurityContext(circle_alpha)
+    payload = context.validate_payload({
+        "test_run": f"run_{run_uuid}",
+        "elder_name": "Eleanor Test",
+        "status": "active",
+    })
+    doc_ref.set(payload)
+
+    # Step B: Real read from Firestore
+    snapshot = doc_ref.get()
+    assert snapshot.exists, "Document write failed to persist in Firestore"
+    data = snapshot.to_dict()
+    assert data["elder_name"] == "Eleanor Test"
+    assert data["circle_id"] == circle_alpha
+    assert data["status"] == "active"
+
+
+def test_03_application_level_tenant_isolation(live_test_session):
+    """
+    Test 3: Verify strict circle-level data isolation logic via CircleSecurityContext.
+    Independently creates, verifies, and registers its own isolated test document.
+
+    NOTE ON SCOPE: This test validates CareCircle's backend application-level isolation
+    enforced by CircleSecurityContext. It does NOT verify Firestore client-side
+    security rules, because the Firebase Admin SDK executes with server-side
+    administrative privileges and bypasses client rules by design.
+    """
+    collection = live_test_session["collection"]
+    circle_alpha = live_test_session["circle_alpha"]
+    circle_beta = live_test_session["circle_beta"]
+    run_uuid = live_test_session["run_uuid"]
+
+    # Independent document creation for test 03
+    doc_id = f"{circle_alpha}_isolation_{run_uuid}"
+    doc_ref = live_test_session["track"](collection.document(doc_id))
+
+    context_alpha = CircleSecurityContext(circle_alpha)
+    doc_ref.set(context_alpha.validate_payload({
+        "test_run": f"run_{run_uuid}",
+        "confidential_data": "alpha_protected_record",
+    }))
+
+    snapshot = doc_ref.get()
+    assert snapshot.exists, "Isolation test document failed to persist"
+    alpha_data = snapshot.to_dict()
+
+    # Context A validates successfully
+    assert context_alpha.validate_document(alpha_data)["circle_id"] == circle_alpha
+
+    # Context B MUST raise CircleIsolationViolation when attempting to access Alpha's data
+    context_beta = CircleSecurityContext(circle_beta)
+    with pytest.raises(CircleIsolationViolation):
+        context_beta.validate_document(alpha_data)
+
+    # Context B MUST reject writing data stamped with Alpha's circle ID
+    with pytest.raises(CircleIsolationViolation):
+        context_beta.validate_payload({"circle_id": circle_alpha, "data": "cross-circle-leak"})
+
+
+def test_04_live_atomic_transaction_duplicate_prevention(firestore_client, live_test_session):
+    """
+    Test 4: Verify atomic dose confirmation and sequential duplicate attempt blocking.
+    Independently creates, verifies, and registers its own isolated dose document.
+
+    NOTE ON CONCURRENCY: This test verifies transaction status guard logic in a sequential
+    duplicate scenario; it demonstrates that a second sequential confirmation attempt
+    is atomically aborted and raises DoseConflictError. It does not claim to verify
+    simultaneous multi-threaded race conditions.
+    """
+    collection = live_test_session["collection"]
+    circle_alpha = live_test_session["circle_alpha"]
+    run_uuid = live_test_session["run_uuid"]
+
+    med_id = f"med-amlodipine-{run_uuid}"
+    dose_id = make_deterministic_dose_id(circle_alpha, med_id, "2026-11-15", "08:00")
+    dose_ref = live_test_session["track"](collection.document(dose_id))
+
+    # Seed pending dose on Firestore
+    dose_ref.set({
+        "circle_id": circle_alpha,
+        "med_id": med_id,
+        "med_name": "Amlodipine",
+        "status": "pending",
+        "scheduled_for": "2026-11-15T08:00:00Z",
+    })
+
+    # Transaction 1: Initial valid confirmation
+    @firestore.transactional
+    def run_first_confirmation(transaction):
+        return execute_atomic_dose_confirmation(
+            transaction=transaction,
+            dose_ref=dose_ref,
+            logged_by_member_id="caregiver-001",
+            logged_by_name="Sarah Nurse",
+            logged_by_role="caregiver",
+            notes="Morning dose taken with water",
+            server_timestamp="2026-11-15T08:02:00Z",
+        )
+
+    txn1 = firestore_client.transaction()
+    res1 = run_first_confirmation(txn1)
+    assert res1["status"] == "taken"
+    assert res1["logged_by_name"] == "Sarah Nurse"
+
+    # Verify persisted state on Firestore
+    persisted_snapshot = dose_ref.get()
+    assert persisted_snapshot.to_dict()["status"] == "taken"
+
+    # Transaction 2: Sequential duplicate confirmation attempt on the same dose
+    @firestore.transactional
+    def run_duplicate_confirmation(transaction):
+        return execute_atomic_dose_confirmation(
+            transaction=transaction,
+            dose_ref=dose_ref,
+            logged_by_member_id="elder-001",
+            logged_by_name="Eleanor",
+            logged_by_role="elder",
+        )
+
+    txn2 = firestore_client.transaction()
+    with pytest.raises(DoseConflictError) as exc_info:
+        run_duplicate_confirmation(txn2)
+
+    assert exc_info.value.existing_status == "taken"
+    assert "already recorded as 'taken'" in str(exc_info.value)
+    assert "Sarah Nurse" in str(exc_info.value)
