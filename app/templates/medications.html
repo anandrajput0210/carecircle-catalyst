@@ -57,6 +57,26 @@
     </div>
   </aside>
 
+  <!-- Urgent Overdue Escalation Alert for Caregivers -->
+  {% if care_brief.overdue_count > 0 %}
+    <div class="care-brief-banner care-brief-alert" role="alert" style="border-width: 3px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <div style="font-size: 1.25rem; font-weight: 800; color: #991b1b; display: flex; align-items: center; gap: 0.5rem;">
+          <span aria-hidden="true">&#128680;</span>
+          <span>URGENT ESCALATION: {{ care_brief.overdue_count }} Critical Dose{{ 's' if care_brief.overdue_count > 1 else '' }} Overdue</span>
+        </div>
+        <p style="margin-top: 0.25rem; margin-bottom: 0; color: #7f1d1d;">
+          One or more scheduled doses have elapsed past the 60-minute safety threshold. Immediate caregiver check-in is advised.
+        </p>
+      </div>
+      {% if circle.elder_profile and circle.elder_profile.get('emergency_phone') %}
+        <a href="tel:{{ circle.elder_profile.get('emergency_phone') }}" class="btn btn-danger" style="white-space: nowrap;">
+          &#128222; Call {{ circle.elder_profile.get('name', 'Elder') }} ({{ circle.elder_profile.get('emergency_phone') }})
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <!-- Section 1: Today's Synchronized Schedule -->
   <div class="card" style="margin-bottom: 2rem;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem;">

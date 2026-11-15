@@ -8,6 +8,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+
 from app.config import settings
 from app.routes.auth import router as auth_router
 from app.routes.circle import router as circle_router
@@ -26,6 +29,52 @@ app = FastAPI(
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
 )
+
+# ============================================================================
+# Security & Efficiency Middlewares (CSP, HSTS, Caching, GZip)
+# ============================================================================
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Enterprise defense-in-depth HTTP security and caching headers:
+    - Enforces CSP, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy.
+    - Applies long-lived immutable caching to static assets for high efficiency.
+    - Applies no-store caching to sensitive API and authenticated routes.
+    """
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Enterprise Security Headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+
+        # High Efficiency Caching Controls
+        path = request.url.path
+        if path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.startswith("/api/") or path.startswith("/auth/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            response.headers["Pragma"] = "no-cache"
+
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Ensure static & template directories exist
 settings.STATIC_DIR.mkdir(parents=True, exist_ok=True)

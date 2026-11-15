@@ -655,3 +655,126 @@ def test_elder_doses_html_page_rendering():
     assert "Today's Medicines" in res.text
     assert "Eleanor Vance" in res.text
     assert "Daily Medicine Helper" in res.text
+
+
+# ============================================================================
+# 9. Enterprise Security Headers, Efficiency Caching & Clinical Safety Tests
+# ============================================================================
+
+def test_enterprise_security_headers_applied():
+    """Verify defense-in-depth HTTP security headers are present on responses."""
+    client = TestClient(app)
+    res = client.get("/api/health")
+    assert res.status_code == 200
+
+    headers = res.headers
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["x-frame-options"] == "DENY"
+    assert headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert "permissions-policy" in headers
+    assert "content-security-policy" in headers
+    assert "default-src 'self'" in headers["content-security-policy"]
+
+
+def test_efficiency_caching_controls_and_static_assets():
+    """Verify long-lived caching on static assets and no-store on sensitive API endpoints."""
+    client = TestClient(app)
+
+    # Static CSS must have immutable cache header for efficiency
+    res_static = client.get("/static/css/style.css")
+    assert res_static.status_code == 200
+    assert "public" in res_static.headers["cache-control"]
+    assert "max-age=31536000" in res_static.headers["cache-control"]
+
+    # API endpoints must not be cached by intermediate proxies
+    res_api = client.get("/api/health")
+    assert res_api.status_code == 200
+    assert "no-store" in res_api.headers["cache-control"]
+
+
+def test_clinical_safety_duplicate_active_prescription_rejected():
+    """Verify attempt to create duplicate active prescription for same medication name is blocked (HTTP 400)."""
+    client, data = setup_circle_and_login()
+    csrf = make_csrf_headers(client)
+
+    # 1. First prescription succeeds
+    res1 = client.post(
+        "/api/medications",
+        json={
+            "name": "Metformin",
+            "dosage": "500 mg",
+            "frequency": "daily",
+            "times_of_day": ["08:00"],
+            "start_date": "2026-01-01",
+        },
+        headers=csrf["headers"],
+    )
+    assert res1.status_code == 201
+
+    # 2. Duplicate active prescription for "Metformin" is rejected as a clinical safety conflict
+    csrf2 = make_csrf_headers(client)
+    res2 = client.post(
+        "/api/medications",
+        json={
+            "name": "metformin",  # Case-insensitive duplicate
+            "dosage": "1000 mg",
+            "frequency": "twice_daily",
+            "times_of_day": ["08:00", "20:00"],
+            "start_date": "2026-01-01",
+        },
+        headers=csrf2["headers"],
+    )
+    assert res2.status_code == 400
+    assert "safety conflict" in res2.json()["detail"].lower()
+
+
+def test_elder_doses_motor_accessibility_keyboard_shortcuts():
+    """Verify Elder dose cards render single-key shortcut indicators for motor-impaired seniors."""
+    client, data = setup_circle_and_login()
+    csrf = make_csrf_headers(client)
+
+    client.post(
+        "/api/medications",
+        json={
+            "name": "Amlodipine",
+            "dosage": "5 mg",
+            "frequency": "daily",
+            "times_of_day": ["08:00"],
+            "start_date": "2026-01-01",
+        },
+        headers=csrf["headers"],
+    )
+
+    elder_client = login_elder(data)
+    res = elder_client.get("/elder/doses")
+    assert res.status_code == 200
+    assert "data-key-index=" in res.text
+    assert "Press [1]" in res.text
+
+
+def test_urgent_escalation_alert_rendered_on_overdue_dose():
+    """Verify that when a dose is overdue, the urgent caregiver escalation banner with emergency dialer renders."""
+    client, data = setup_circle_and_login()
+    csrf = make_csrf_headers(client)
+
+    # Schedule medication at past time today (ensuring overdue state)
+    now_hour = datetime.now(timezone.utc).hour
+    past_time = f"{max(0, now_hour - 3):02d}:00"
+
+    client.post(
+        "/api/medications",
+        json={
+            "name": "Warfarin",
+            "dosage": "2 mg",
+            "frequency": "daily",
+            "times_of_day": [past_time],
+            "start_date": "2026-01-01",
+        },
+        headers=csrf["headers"],
+    )
+
+    res = client.get("/medications")
+    assert res.status_code == 200
+    assert "URGENT ESCALATION" in res.text
+    assert "tel:+1-555-0100" in res.text  # Emergency phone from setup fixture
+

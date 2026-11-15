@@ -1,0 +1,16 @@
+{
+  "name": "CareCircle - Senior Care & Medication Safety",
+  "short_name": "CareCircle",
+  "description": "Collaborative elderly-care coordination and medication-management platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0369a1",
+  "icons": [
+    {
+      "src": "/static/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

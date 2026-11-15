@@ -70,6 +70,15 @@ class MedicationService:
         if not elder_id:
             elder_id = f"elder_{circle_id[:8]}"
 
+        # Clinical Safety Guard: Prevent duplicate active prescriptions in the same circle
+        active_meds = await self.med_repo.list_medications(circle_id, active_only=True)
+        for existing in active_meds:
+            if existing.get("name", "").strip().lower() == payload.name.strip().lower():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Safety conflict: An active prescription for '{payload.name}' already exists in this care circle. Please update the existing regimen instead of creating a duplicate.",
+                )
+
         now_iso = datetime.now(timezone.utc).isoformat()
         med_id = str(uuid.uuid4())
 
