@@ -36,7 +36,27 @@ class Settings:
         or os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1", "t")
     )
     SESSION_COOKIE_NAME: str = "carecircle_session"
-    SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
+    SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 30  # 30 days absolute max
+    
+    # CSRF Settings
+    # Production uses __Host-carecircle_csrf, local dev uses carecircle_csrf
+    CSRF_COOKIE_NAME: str = "__Host-carecircle_csrf" if COOKIE_SECURE else "carecircle_csrf"
+    CSRF_HEADER_NAME: str = "X-CSRF-Token"
+    CSRF_MAX_AGE_SECONDS: int = 60 * 60 * 24  # 24 hours
+
+    # Session Timeouts (Application Level)
+    CAREGIVER_IDLE_TIMEOUT_SECONDS: int = 7 * 24 * 60 * 60  # 7 days
+    CAREGIVER_ABSOLUTE_TIMEOUT_SECONDS: int = 30 * 24 * 60 * 60  # 30 days
+    ELDER_IDLE_TIMEOUT_SECONDS: int = 12 * 60 * 60  # 12 hours
+    ELDER_ABSOLUTE_TIMEOUT_SECONDS: int = 24 * 60 * 60  # 24 hours
+    SESSION_TOUCH_THROTTLE_SECONDS: int = 15 * 60  # 15 minutes throttle for Spark quota
+
+    # Rate Limiting & Account Lockout
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_DURATION_MINUTES: int = 15
+
+    # Bootstrap & First-Circle Provisioning
+    BOOTSTRAP_SECRET: str = os.getenv("BOOTSTRAP_SECRET", "carecircle-bootstrap-dev-secret-change-in-prod")
 
     # Firebase Firestore (Server-Side Service Account Only)
     # Spark Plan Free Tier. Credentials must NEVER be exposed to frontend code.

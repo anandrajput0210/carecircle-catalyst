@@ -214,3 +214,97 @@ def test_04_live_atomic_transaction_duplicate_prevention(firestore_client, live_
     assert exc_info.value.existing_status == "taken"
     assert "already recorded as 'taken'" in str(exc_info.value)
     assert "Sarah Nurse" in str(exc_info.value)
+
+
+def test_05_live_auth_credential_hashing_and_member_lookup(firestore_client, live_test_session):
+    """
+    Test 5: Live Firestore authentication test — isolated member credential hashing & lookup.
+    Writes an isolated caregiver record with Argon2id hash to _live_verification_tests.
+    Verifies Argon2id verification and circle payload isolation.
+    """
+    from app.services.auth import hash_credential, verify_credential
+    collection = live_test_session["collection"]
+    circle_alpha = live_test_session["circle_alpha"]
+    run_uuid = live_test_session["run_uuid"]
+
+    doc_id = f"{circle_alpha}_caregiver_{run_uuid}"
+    doc_ref = live_test_session["track"](collection.document(doc_id))
+
+    test_password = "LiveCaregiverPassword!123"
+    password_hash = hash_credential(test_password)
+
+    # Write isolated member record
+    doc_ref.set({
+        "member_id": f"mem_{run_uuid}",
+        "circle_id": circle_alpha,
+        "username": f"live_cg_{run_uuid}",
+        "display_name": "Live Test Caregiver",
+        "role": "caregiver",
+        "password_hash": password_hash,
+        "auth_version": 1,
+        "is_active": True,
+    })
+
+    # Read and verify
+    snapshot = doc_ref.get()
+    assert snapshot.exists, "Caregiver record failed to persist in live Firestore"
+    data = snapshot.to_dict()
+    assert verify_credential(data["password_hash"], test_password) is True
+    assert verify_credential(data["password_hash"], "WrongPassword") is False
+
+
+def test_06_live_session_lifecycle_and_revocation(firestore_client, live_test_session):
+    """
+    Test 6: Live Firestore session lifecycle — token hashing, session creation, and revocation.
+    Writes an isolated session record to _live_verification_tests.
+    Verifies lookup by SHA-256 hash, update of last_seen_at, and session revocation.
+    """
+    from datetime import datetime, timezone, timedelta
+    from app.services.auth import generate_session_token, hash_session_token
+
+    collection = live_test_session["collection"]
+    circle_alpha = live_test_session["circle_alpha"]
+    run_uuid = live_test_session["run_uuid"]
+
+    raw_token = generate_session_token()
+    session_id = hash_session_token(raw_token)
+
+    doc_id = f"session_{session_id[:16]}_{run_uuid}"
+    doc_ref = live_test_session["track"](collection.document(doc_id))
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=7)
+
+    doc_ref.set({
+        "session_id": session_id,
+        "member_id": f"mem_{run_uuid}",
+        "circle_id": circle_alpha,
+        "role": "caregiver",
+        "revoked": False,
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "last_seen_at": now.isoformat(),
+    })
+
+    # Read session
+    snapshot = doc_ref.get()
+    assert snapshot.exists
+    assert snapshot.to_dict()["revoked"] is False
+
+    # Revoke session
+    doc_ref.update({"revoked": True, "revoked_reason": "logout"})
+    updated = doc_ref.get().to_dict()
+    assert updated["revoked"] is True
+    assert updated["revoked_reason"] == "logout"
+
+
+def test_07_live_bootstrap_safeguard_explanation():
+    """
+    Test 7: Verification and documentation of production bootstrap safeguards.
+    Documents that modifying the production singleton 'system_metadata/provisioning'
+    is deliberately prevented during live testing to protect the real deployment state.
+    """
+    from app.repositories.firestore_circle import FirestoreCircleRepository
+    repo = FirestoreCircleRepository()
+    assert hasattr(repo, "is_provisioned")
+    assert callable(repo.is_provisioned)

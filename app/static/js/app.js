@@ -84,6 +84,27 @@
     });
   }
 
+  // Logout Handler
+  const logoutBtn = document.getElementById("btn-logout");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async function () {
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      const csrf = meta ? meta.getAttribute("content") : "";
+      try {
+        await fetch("/auth/logout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+          },
+        });
+      } catch (e) {
+        // Proceed with redirect regardless of network status
+      }
+      window.location.href = "/";
+    });
+  }
+
   // Initialize
   initContrast();
   initFontSize();

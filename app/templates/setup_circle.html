@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Initial CareCircle{% endblock %}
+
+{% block content %}
+<section class="auth-section" aria-labelledby="setup-title">
+  <div class="auth-container">
+    <h1 id="setup-title" class="auth-heading">Initialize CareCircle</h1>
+    <p class="auth-subheading">One-time setup for the initial care circle and primary caregiver identity.</p>
+
+    <!-- Error / Success Alert Box -->
+    <div id="setup-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+
+    <!-- Success Result Box (Hidden until provisioned) -->
+    <div id="setup-success-card" class="card success-card sr-only" role="region" aria-label="Provisioning Results">
+      <h2 class="text-success">&#10004; CareCircle Initialized!</h2>
+      <p>Your care circle has been provisioned securely.</p>
+
+      <div class="info-group">
+        <label>Circle Code (for Elder Sign In):</label>
+        <div id="res-circle-code" class="display-code text-bold"></div>
+      </div>
+
+      <div class="info-group recovery-warning-box">
+        <label><strong>&#9888; Primary Caregiver Emergency Recovery Key:</strong></label>
+        <div id="res-recovery-key" class="display-key"></div>
+        <small class="text-danger">
+          <strong>CRITICAL:</strong> Store this 24-character key in a safe offline location immediately. It is shown only once and cannot be retrieved later.
+        </small>
+      </div>
+
+      <a href="/auth/login" class="btn btn-primary btn-block">Proceed to Sign In</a>
+    </div>
+
+    <!-- Setup Form -->
+    <form id="form-setup-circle" class="auth-form" novalidate>
+      <div class="form-section">
+        <h2 class="section-title">1. Bootstrap Security Authorization</h2>
+        <div class="form-group">
+          <label for="bootstrap-secret">Server Bootstrap Secret</label>
+          <input
+            type="password"
+            id="bootstrap-secret"
+            name="bootstrap_secret"
+            class="form-input"
+            required
+            placeholder="System bootstrap secret"
+            aria-describedby="bootstrap-hint"
+          >
+          <small id="bootstrap-hint" class="form-hint">Server environment key required for initial setup.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="section-title">2. Care Circle Details</h2>
+        <div class="form-group">
+          <label for="circle-name">Circle Name</label>
+          <input
+            type="text"
+            id="circle-name"
+            name="circle_name"
+            class="form-input"
+            placeholder="e.g. Miller Family Care"
+            required
+          >
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="section-title">3. Primary Caregiver Account</h2>
+        <div class="form-group">
+          <label for="cg-name">Caregiver Display Name</label>
+          <input type="text" id="cg-name" name="caregiver_name" class="form-input" placeholder="e.g. Sarah Miller" required>
+        </div>
+
+        <div class="form-group">
+          <label for="cg-user">Caregiver Username</label>
+          <input type="text" id="cg-user" name="caregiver_username" class="form-input" placeholder="sarah_caregiver" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="cg-pass">Caregiver Password</label>
+          <input
+            type="password"
+            id="cg-pass"
+            name="caregiver_password"
+            class="form-input"
+            minlength="10"
+            required
+            autocomplete="new-password"
+            aria-describedby="cg-pass-hint"
+          >
+          <small id="cg-pass-hint" class="form-hint">Minimum 10 characters.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="section-title">4. Elder Healthcare Profile</h2>
+        <div class="form-group">
+          <label for="elder-display-name">Elder Display Name</label>
+          <input type="text" id="elder-display-name" name="elder_name" class="form-input" placeholder="e.g. Eleanor Miller" required>
+        </div>
+
+        <div class="form-group">
+          <label for="elder-passcode">Elder Passcode / PIN</label>
+          <input
+            type="password"
+            id="elder-passcode"
+            name="elder_pin"
+            class="form-input pin-input"
+            placeholder="••••"
+            inputmode="numeric"
+            pattern="[0-9]{4,6}"
+            maxlength="6"
+            required
+            aria-describedby="elder-pin-setup-hint"
+          >
+          <small id="elder-pin-setup-hint" class="form-hint">Senior-friendly 4 to 6-digit numeric PIN.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="elder-dob">Date of Birth (Optional)</label>
+          <input type="date" id="elder-dob" name="elder_dob" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label for="primary-cond">Primary Medical Condition (Optional)</label>
+          <input type="text" id="primary-cond" name="primary_condition" class="form-input" placeholder="e.g. Hypertension, Mild Cognitive Impairment">
+        </div>
+
+        <div class="form-group">
+          <label for="emerg-phone">Emergency Phone (Optional)</label>
+          <input type="tel" id="emerg-phone" name="emergency_phone" class="form-input" placeholder="+1-555-0199">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-submit-setup">
+        Initialize CareCircle
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  const form = document.getElementById("form-setup-circle");
+  const alertBox = document.getElementById("setup-alert");
+  const successCard = document.getElementById("setup-success-card");
+  const resCircleCode = document.getElementById("res-circle-code");
+  const resRecoveryKey = document.getElementById("res-recovery-key");
+  const submitBtn = document.getElementById("btn-submit-setup");
+
+  function showAlert(msg, isError) {
+    alertBox.textContent = msg;
+    alertBox.className = "alert-box " + (isError ? "alert-error" : "alert-success");
+    alertBox.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  form.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Initializing...";
+
+    const payload = {
+      bootstrap_secret: document.getElementById("bootstrap-secret").value,
+      circle_name: document.getElementById("circle-name").value.trim(),
+      caregiver_name: document.getElementById("cg-name").value.trim(),
+      caregiver_username: document.getElementById("cg-user").value.trim().toLowerCase(),
+      caregiver_password: document.getElementById("cg-pass").value,
+      elder_name: document.getElementById("elder-display-name").value.trim(),
+      elder_pin: document.getElementById("elder-passcode").value.trim(),
+      elder_dob: document.getElementById("elder-dob").value || null,
+      primary_condition: document.getElementById("primary-cond").value.trim() || null,
+      emergency_phone: document.getElementById("emerg-phone").value.trim() || null,
+    };
+
+    try {
+      const res = await fetch("/auth/setup-circle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        form.classList.add("sr-only");
+        alertBox.classList.add("sr-only");
+        resCircleCode.textContent = data.circle.circle_code;
+        resRecoveryKey.textContent = data.recovery_key;
+        successCard.classList.remove("sr-only");
+        successCard.scrollIntoView({ behavior: "smooth" });
+      } else {
+        showAlert(data.detail || "Setup failed. Check your bootstrap secret.", true);
+      }
+    } catch (err) {
+      showAlert("Network error during circle initialization.", true);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Initialize CareCircle";
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In — CareCircle{% endblock %}
+
+{% block content %}
+<section class="auth-section" aria-labelledby="auth-title">
+  <div class="auth-container">
+    <h1 id="auth-title" class="auth-heading">Sign In to CareCircle</h1>
+    <p class="auth-subheading">Choose your sign-in method to access your circle.</p>
+
+    <!-- Error / Success Alert Box -->
+    <div id="auth-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+
+    <!-- Auth Tabs -->
+    <div class="auth-tabs" role="tablist" aria-label="Sign In Options">
+      <button id="tab-elder" class="auth-tab active" role="tab" aria-selected="true" aria-controls="panel-elder" type="button">
+        &#128100; Elder Sign In
+      </button>
+      <button id="tab-caregiver" class="auth-tab" role="tab" aria-selected="false" aria-controls="panel-caregiver" type="button">
+        &#128106; Caregiver &amp; Family
+      </button>
+    </div>
+
+    <!-- Panel 1: Elder Sign In (Option B: Circle Code + Name + PIN) -->
+    <div id="panel-elder" class="auth-panel" role="tabpanel" aria-labelledby="tab-elder">
+      <form id="form-elder-login" class="auth-form" novalidate>
+        <div class="form-group">
+          <label for="elder-circle-code">Circle Code</label>
+          <input
+            type="text"
+            id="elder-circle-code"
+            name="circle_code"
+            class="form-input text-uppercase"
+            placeholder="e.g. C7K9W2"
+            maxlength="6"
+            pattern="[A-HJ-NP-Za-hj-np-z2-9]{6}"
+            required
+            autocomplete="off"
+            aria-describedby="elder-circle-desc"
+          >
+          <small id="elder-circle-desc" class="form-hint">6-character code provided by your caregiver.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="elder-name">Your Name</label>
+          <input
+            type="text"
+            id="elder-name"
+            name="elder_name"
+            class="form-input"
+            placeholder="e.g. Eleanor"
+            maxlength="60"
+            required
+            autocomplete="name"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="elder-pin">Passcode / PIN</label>
+          <input
+            type="password"
+            id="elder-pin"
+            name="pin"
+            class="form-input pin-input"
+            placeholder="••••"
+            inputmode="numeric"
+            pattern="[0-9]{4,6}"
+            maxlength="6"
+            required
+            autocomplete="current-password"
+            aria-describedby="elder-pin-desc"
+          >
+          <small id="elder-pin-desc" class="form-hint">4 to 6-digit numeric passcode.</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-submit-elder">
+          Sign In
+        </button>
+      </form>
+    </div>
+
+    <!-- Panel 2: Caregiver & Family Sign In -->
+    <div id="panel-caregiver" class="auth-panel sr-only" role="tabpanel" aria-labelledby="tab-caregiver">
+      <form id="form-caregiver-login" class="auth-form" novalidate>
+        <div class="form-group">
+          <label for="cg-username">Username or Email</label>
+          <input
+            type="text"
+            id="cg-username"
+            name="username"
+            class="form-input"
+            placeholder="username"
+            maxlength="100"
+            required
+            autocomplete="username"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="cg-password">Password</label>
+          <input
+            type="password"
+            id="cg-password"
+            name="password"
+            class="form-input"
+            placeholder="Your password"
+            maxlength="128"
+            required
+            autocomplete="current-password"
+          >
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-submit-caregiver">
+          Sign In
+        </button>
+      </form>
+
+      <div class="auth-recovery-link">
+        <a href="#recover" id="link-show-recovery">Emergency Recovery with Key</a>
+      </div>
+    </div>
+
+    <!-- Panel 3: Emergency Recovery (Hidden by default) -->
+    <div id="panel-recovery" class="auth-panel sr-only" role="region" aria-label="Emergency Account Recovery">
+      <h2 class="panel-subtitle">Emergency Account Recovery</h2>
+      <p class="panel-subtext">Use your 24-character recovery key to reset your caregiver password.</p>
+
+      <form id="form-recovery" class="auth-form" novalidate>
+        <div class="form-group">
+          <label for="rec-username">Caregiver Username</label>
+          <input type="text" id="rec-username" name="username" class="form-input" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="rec-key">Emergency Recovery Key</label>
+          <input
+            type="text"
+            id="rec-key"
+            name="recovery_key"
+            class="form-input text-uppercase"
+            placeholder="24-character key"
+            maxlength="64"
+            required
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="rec-password">New Password</label>
+          <input
+            type="password"
+            id="rec-password"
+            name="new_password"
+            class="form-input"
+            minlength="10"
+            maxlength="128"
+            required
+            autocomplete="new-password"
+          >
+        </div>
+
+        <button type="submit" class="btn btn-warning btn-block" id="btn-submit-recovery">
+          Reset Password &amp; Rotate Key
+        </button>
+
+        <button type="button" class="btn btn-link btn-block" id="btn-cancel-recovery">
+          Back to Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  const tabElder = document.getElementById("tab-elder");
+  const tabCaregiver = document.getElementById("tab-caregiver");
+  const panelElder = document.getElementById("panel-elder");
+  const panelCaregiver = document.getElementById("panel-caregiver");
+  const panelRecovery = document.getElementById("panel-recovery");
+  const linkRecovery = document.getElementById("link-show-recovery");
+  const btnCancelRecovery = document.getElementById("btn-cancel-recovery");
+  const alertBox = document.getElementById("auth-alert");
+
+  function showAlert(msg, isError) {
+    alertBox.textContent = msg;
+    alertBox.className = "alert-box " + (isError ? "alert-error" : "alert-success");
+    alertBox.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function clearAlert() {
+    alertBox.textContent = "";
+    alertBox.className = "alert-box sr-only";
+  }
+
+  function switchTab(toElder) {
+    clearAlert();
+    tabElder.classList.toggle("active", toElder);
+    tabElder.setAttribute("aria-selected", toElder ? "true" : "false");
+    tabCaregiver.classList.toggle("active", !toElder);
+    tabCaregiver.setAttribute("aria-selected", !toElder ? "true" : "false");
+
+    panelElder.classList.toggle("sr-only", !toElder);
+    panelCaregiver.classList.toggle("sr-only", toElder);
+    panelRecovery.classList.add("sr-only");
+  }
+
+  tabElder.addEventListener("click", () => switchTab(true));
+  tabCaregiver.addEventListener("click", () => switchTab(false));
+
+  linkRecovery.addEventListener("click", (e) => {
+    e.preventDefault();
+    clearAlert();
+    panelCaregiver.classList.add("sr-only");
+    panelElder.classList.add("sr-only");
+    panelRecovery.classList.remove("sr-only");
+  });
+
+  btnCancelRecovery.addEventListener("click", () => {
+    switchTab(false);
+  });
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  // Handle Elder Sign In
+  document.getElementById("form-elder-login").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    clearAlert();
+    const btn = document.getElementById("btn-submit-elder");
+    btn.disabled = true;
+    btn.textContent = "Signing In...";
+
+    const payload = {
+      circle_code: document.getElementById("elder-circle-code").value.trim().toUpperCase(),
+      elder_name: document.getElementById("elder-name").value.trim(),
+      pin: document.getElementById("elder-pin").value.trim(),
+    };
+
+    try {
+      const res = await fetch("/auth/elder-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showAlert("Welcome back, " + data.member.display_name + "!", false);
+        setTimeout(() => { window.location.href = "/"; }, 800);
+      } else {
+        showAlert(data.detail || "Sign in failed. Please try again.", true);
+      }
+    } catch (err) {
+      showAlert("Network error. Please try again.", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign In";
+    }
+  });
+
+  // Handle Caregiver Sign In
+  document.getElementById("form-caregiver-login").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    clearAlert();
+    const btn = document.getElementById("btn-submit-caregiver");
+    btn.disabled = true;
+    btn.textContent = "Signing In...";
+
+    const payload = {
+      username: document.getElementById("cg-username").value.trim().toLowerCase(),
+      password: document.getElementById("cg-password").value,
+    };
+
+    try {
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showAlert("Login successful! Redirecting...", false);
+        setTimeout(() => { window.location.href = "/"; }, 800);
+      } else {
+        showAlert(data.detail || "Invalid username or password.", true);
+      }
+    } catch (err) {
+      showAlert("Network error. Please try again.", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign In";
+    }
+  });
+
+  // Handle Emergency Recovery
+  document.getElementById("form-recovery").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    clearAlert();
+    const btn = document.getElementById("btn-submit-recovery");
+    btn.disabled = true;
+    btn.textContent = "Recovering...";
+
+    const payload = {
+      username: document.getElementById("rec-username").value.trim().toLowerCase(),
+      recovery_key: document.getElementById("rec-key").value.trim().toUpperCase(),
+      new_password: document.getElementById("rec-password").value,
+    };
+
+    try {
+      const res = await fetch("/auth/recover", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showAlert("Recovery successful! New recovery key: " + data.recovery_key + " (Save this offline now!)", false);
+        setTimeout(() => { switchTab(false); }, 3000);
+      } else {
+        showAlert(data.detail || "Recovery failed.", true);
+      }
+    } catch (err) {
+      showAlert("Network error during recovery.", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Reset Password & Rotate Key";
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="CareCircle - Collaborative elderly-care and medication-management platform.">
+  {% if csrf_token %}
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  {% endif %}
   <title>{% block title %}CareCircle{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/style.css">
   {% block extra_head %}{% endblock %}
@@ -22,6 +25,21 @@
         <span class="brand-icon" aria-hidden="true">&#9829;</span>
         <span class="brand-name">CareCircle</span>
       </a>
+
+      <!-- Header Navigation & Auth Controls -->
+      <nav class="site-nav" aria-label="User navigation">
+        {% if user %}
+          <span class="user-greeting" aria-label="Logged in as {{ user.display_name }}">
+            Hello, <strong>{{ user.display_name }}</strong> ({{ user.role.value | capitalize }})
+          </span>
+          <button id="btn-logout" class="btn btn-sm btn-outline" type="button" aria-label="Sign out of CareCircle">
+            Sign Out
+          </button>
+        {% else %}
+          <a href="/auth/login" class="nav-link" id="nav-login">Sign In</a>
+          <a href="/auth/setup-circle" class="nav-link" id="nav-setup">Setup Circle</a>
+        {% endif %}
+      </nav>
 
       <!-- Accessibility Toolbar -->
       <div class="accessibility-controls" role="region" aria-label="Accessibility Settings">
