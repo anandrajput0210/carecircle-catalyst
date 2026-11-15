@@ -1,0 +1,38 @@
+"""Domain models and schemas for CareCircle."""
+from app.models.auth import (
+    MemberRole,
+    AuthType,
+    LoginRequest,
+    ElderLoginRequest,
+    CircleCreateRequest,
+    MemberInviteRequest,
+    MemberJoinRequest,
+    RecoveryRequest,
+    CredentialResetRequest,
+    MemberDoc,
+    SessionDoc,
+    SessionData,
+    MemberPublicResponse,
+    CirclePublicResponse,
+    RecoveryKeyResponse,
+    AuthStatusResponse,
+)
+
+__all__ = [
+    "MemberRole",
+    "AuthType",
+    "LoginRequest",
+    "ElderLoginRequest",
+    "CircleCreateRequest",
+    "MemberInviteRequest",
+    "MemberJoinRequest",
+    "RecoveryRequest",
+    "CredentialResetRequest",
+    "MemberDoc",
+    "SessionDoc",
+    "SessionData",
+    "MemberPublicResponse",
+    "CirclePublicResponse",
+    "RecoveryKeyResponse",
+    "AuthStatusResponse",
+]
