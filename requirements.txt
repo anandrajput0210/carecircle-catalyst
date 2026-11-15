@@ -10,6 +10,9 @@ itsdangerous>=2.2.0
 # Security & Password Hashing
 argon2-cffi>=23.1.0
 
+# Firebase Firestore (Server-Side Admin SDK)
+firebase-admin>=7.0.0
+
 # HTTP Client (for external cron triggers and health probes)
 httpx>=0.27.0
 

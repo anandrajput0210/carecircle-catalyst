@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
+from app.services.firestore import verify_firestore_health
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -29,13 +30,17 @@ templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
 
 @app.get("/api/health", tags=["System"])
 async def health_check():
-    """Basic health check endpoint."""
+    """Health check endpoint reporting runtime environment and Firestore status."""
+    firestore_health = verify_firestore_health()
+    overall_status = "healthy" if firestore_health.get("status") in ("connected", "unconfigured") else "degraded"
     return JSONResponse(
+        status_code=200,
         content={
-            "status": "healthy",
+            "status": overall_status,
             "service": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT,
+            "firestore": firestore_health,
         }
     )
 

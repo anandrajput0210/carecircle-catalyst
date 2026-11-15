@@ -11,24 +11,38 @@ APP_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def _detect_environment() -> str:
+    """Detect runtime environment, prioritizing Vercel deployment variables."""
+    vercel_env = os.getenv("VERCEL_ENV")
+    if vercel_env:
+        return vercel_env.lower()
+    return os.getenv("ENVIRONMENT", "development").lower()
+
+
 class Settings:
     """Application settings loaded from environment variables."""
 
     # Project Information
     APP_NAME: str = "CareCircle"
     APP_VERSION: str = "0.1.0"
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    ENVIRONMENT: str = _detect_environment()
     DEBUG: bool = ENVIRONMENT == "development"
 
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "carecircle-insecure-dev-secret-key-32b")
-    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1", "t")
+    # In production on Vercel, cookies must always be Secure
+    COOKIE_SECURE: bool = (
+        ENVIRONMENT in ("production", "preview")
+        or os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1", "t")
+    )
     SESSION_COOKIE_NAME: str = "carecircle_session"
     SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
 
-    # Firebase Firestore
+    # Firebase Firestore (Server-Side Service Account Only)
+    # Spark Plan Free Tier. Credentials must NEVER be exposed to frontend code.
     FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "carecircle-catalyst")
     FIREBASE_SERVICE_ACCOUNT_KEY_B64: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY_B64", "")
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 
     # AI Integration (Google Gemini API - Free Tier)
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
