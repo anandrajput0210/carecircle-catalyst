@@ -44,6 +44,7 @@ class CircleService:
             is_active=circle.get("is_active", True),
             created_at=circle.get("created_at", ""),
             updated_at=circle.get("updated_at"),
+            timezone=circle.get("timezone", "UTC"),
         )
 
     async def update_circle_metadata(
@@ -60,6 +61,8 @@ class CircleService:
         update_dict: Dict[str, Any] = {}
         if payload.circle_name is not None:
             update_dict["name"] = payload.circle_name
+        if payload.timezone is not None:
+            update_dict["timezone"] = payload.timezone
 
         # Elder healthcare profile sub-fields
         elder_profile_updates: Dict[str, Any] = {}

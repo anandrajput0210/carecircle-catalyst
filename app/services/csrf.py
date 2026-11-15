@@ -1,8 +1,9 @@
 """CSRF Protection Service using Double-Submit HMAC Token."""
-import hmac
 import hashlib
-import time
+import hmac
+import os
 import secrets
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -64,6 +65,7 @@ def is_allowed_origin(origin_or_referer: Optional[str]) -> bool:
     """
     Validate that request Origin or Referer belongs to permitted production, preview,
     or local development hosts.
+    Rejects arbitrary wildcard *.vercel.app origins to prevent cross-subdomain CSRF.
     """
     if not origin_or_referer:
         return False
@@ -71,15 +73,31 @@ def is_allowed_origin(origin_or_referer: Optional[str]) -> bool:
     parsed = urlparse(origin_or_referer)
     hostname = (parsed.hostname or "").lower()
     netloc = (parsed.netloc or "").lower()
+    scheme = (parsed.scheme or "").lower()
 
-    # Allow local development and testclient hosts
+    # 1. Allow local development and testclient hosts
     if hostname in ("localhost", "127.0.0.1", "::1", "testserver"):
         return True
     if netloc.startswith("localhost:") or netloc.startswith("127.0.0.1:"):
         return True
 
-    # Allow Vercel production and preview domains
-    if hostname.endswith(".vercel.app") or hostname == "carecircle.app":
+    # 2. Check explicit allowed origins from settings
+    origin_full = f"{scheme}://{netloc}" if scheme and netloc else ""
+    for allowed in settings.ALLOWED_ORIGINS:
+        allowed_clean = allowed.strip().rstrip("/").lower()
+        if origin_full == allowed_clean:
+            return True
+        allowed_parsed = urlparse(allowed_clean)
+        if allowed_parsed.hostname and hostname == allowed_parsed.hostname.lower():
+            return True
+
+    # 3. Allow current project-scoped Vercel deployment URL if present in runtime environment
+    vercel_url = os.getenv("VERCEL_URL", "").lower().strip()
+    if vercel_url and (hostname == vercel_url or netloc == vercel_url):
+        return True
+
+    # 4. Allow only specific project-scoped Vercel preview subdomains (e.g. carecircle-catalyst-*)
+    if hostname.startswith("carecircle-catalyst") and hostname.endswith(".vercel.app"):
         return True
 
     return False

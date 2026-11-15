@@ -680,16 +680,18 @@ def test_efficiency_caching_controls_and_static_assets():
     """Verify long-lived caching on static assets and no-store on sensitive API endpoints."""
     client = TestClient(app)
 
-    # Static CSS must have immutable cache header for efficiency
+    # Static CSS uses short revalidation caching for unversioned assets
     res_static = client.get("/static/css/style.css")
     assert res_static.status_code == 200
     assert "public" in res_static.headers["cache-control"]
-    assert "max-age=31536000" in res_static.headers["cache-control"]
+    assert "max-age=3600" in res_static.headers["cache-control"]
+    assert "must-revalidate" in res_static.headers["cache-control"]
 
-    # API endpoints must not be cached by intermediate proxies
+    # API and private HTML endpoints must not be cached by intermediate proxies
     res_api = client.get("/api/health")
     assert res_api.status_code == 200
     assert "no-store" in res_api.headers["cache-control"]
+    assert "private" in res_api.headers["cache-control"]
 
 
 def test_clinical_safety_duplicate_active_prescription_rejected():
@@ -728,8 +730,8 @@ def test_clinical_safety_duplicate_active_prescription_rejected():
     assert "safety conflict" in res2.json()["detail"].lower()
 
 
-def test_elder_doses_motor_accessibility_keyboard_shortcuts():
-    """Verify Elder dose cards render single-key shortcut indicators for motor-impaired seniors."""
+def test_elder_doses_accessible_button_activation_no_unsafe_single_key():
+    """Verify Elder dose cards require focused button activation, preventing silent accidental confirmations."""
     client, data = setup_circle_and_login()
     csrf = make_csrf_headers(client)
 
@@ -748,8 +750,12 @@ def test_elder_doses_motor_accessibility_keyboard_shortcuts():
     elder_client = login_elder(data)
     res = elder_client.get("/elder/doses")
     assert res.status_code == 200
-    assert "data-key-index=" in res.text
-    assert "Press [1]" in res.text
+    # Single-key auto-click shortcuts removed to prevent silent accidental confirmations
+    assert "data-key-index=" not in res.text
+    assert "Press [1]" not in res.text
+    # Accessible button for intentional focused activation is present
+    assert "I TOOK THIS MEDICINE" in res.text
+    assert "aria-label=" in res.text
 
 
 def test_urgent_escalation_alert_rendered_on_overdue_dose():
@@ -777,4 +783,157 @@ def test_urgent_escalation_alert_rendered_on_overdue_dose():
     assert res.status_code == 200
     assert "URGENT ESCALATION" in res.text
     assert "tel:+1-555-0100" in res.text  # Emergency phone from setup fixture
+
+
+# ============================================================================
+# Additional Comprehensive Validation & Regression Tests (Urgent Corrections)
+# ============================================================================
+
+def test_backend_dose_confirmation_strict_validations():
+    """Verify backend rejects invalid confirmation attempts across all safety invariants."""
+    client, data = setup_circle_and_login()
+    csrf = make_csrf_headers(client)
+
+    # Setup active medication (open-ended regimen started in 2020)
+    today_dt = datetime.now(timezone.utc)
+    today_str = today_dt.strftime("%Y-%m-%d")
+    yesterday_str = (today_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    med_res = client.post(
+        "/api/medications",
+        json={
+            "name": "Levothyroxine",
+            "dosage": "50 mcg",
+            "frequency": "daily",
+            "times_of_day": ["08:00"],
+            "start_date": "2020-01-01",
+        },
+        headers=csrf["headers"],
+    )
+    assert med_res.status_code == 201
+    med_id = med_res.json()["medication_id"]
+    circle_id = data["circle"]["circle_id"]
+
+    # 1. Reject future date confirmation on open-ended medication (400)
+    future_date = "2029-01-01"
+    future_dose_id = f"{circle_id}_{med_id}_{future_date}_08-00"
+    csrf1 = make_csrf_headers(client)
+    res_future = client.post(
+        f"/api/medications/doses/{future_dose_id}/confirm",
+        json={"notes": "premature"},
+        headers=csrf1["headers"],
+    )
+    assert res_future.status_code == 400
+    assert "future" in res_future.json()["detail"].lower()
+
+    # 2. Reject past missed date confirmation within regimen (400)
+    past_dose_id = f"{circle_id}_{med_id}_{yesterday_str}_08-00"
+    csrf2 = make_csrf_headers(client)
+    res_past = client.post(
+        f"/api/medications/doses/{past_dose_id}/confirm",
+        json={"notes": "late"},
+        headers=csrf2["headers"],
+    )
+    assert res_past.status_code == 400
+    assert "past" in res_past.json()["detail"].lower()
+
+    # 3. Reject scheduled time not in regimen (400)
+    invalid_time_dose_id = f"{circle_id}_{med_id}_{today_str}_15-30"
+    csrf3 = make_csrf_headers(client)
+    res_bad_time = client.post(
+        f"/api/medications/doses/{invalid_time_dose_id}/confirm",
+        json={},
+        headers=csrf3["headers"],
+    )
+    assert res_bad_time.status_code == 400
+    assert "regimen" in res_bad_time.json()["detail"].lower()
+
+    # 4. Reject confirmation >60m before scheduled time (400)
+    now_hour = datetime.now(timezone.utc).hour
+    future_time_today = f"{(now_hour + 4) % 24:02d}:00"
+    csrf_far = make_csrf_headers(client)
+    med_far_res = client.post(
+        "/api/medications",
+        json={
+            "name": "Insulin",
+            "dosage": "10 units",
+            "frequency": "daily",
+            "times_of_day": [future_time_today],
+            "start_date": today_str,
+        },
+        headers=csrf_far["headers"],
+    )
+    med_far_id = med_far_res.json()["medication_id"]
+    far_dose_id = f"{circle_id}_{med_far_id}_{today_str}_{future_time_today.replace(':', '-')}"
+    csrf_far_confirm = make_csrf_headers(client)
+    res_far = client.post(
+        f"/api/medications/doses/{far_dose_id}/confirm",
+        json={},
+        headers=csrf_far_confirm["headers"],
+    )
+    assert res_far.status_code == 400
+    assert "60 minutes" in res_far.json()["detail"].lower()
+
+    # 5. Reject paused medication confirmation (400)
+    csrf_pause = make_csrf_headers(client)
+    client.post(
+        f"/api/medications/{med_id}/pause",
+        json={"is_paused": True},
+        headers=csrf_pause["headers"],
+    )
+    csrf_paused_confirm = make_csrf_headers(client)
+    res_paused = client.post(
+        f"/api/medications/doses/{circle_id}_{med_id}_{today_str}_08-00/confirm",
+        json={},
+        headers=csrf_paused_confirm["headers"],
+    )
+    assert res_paused.status_code == 400
+    assert "paused" in res_paused.json()["detail"].lower()
+
+
+def test_timezone_asia_kolkata_schedule_and_iso():
+    """Verify care circle with Asia/Kolkata timezone translates scheduled times correctly."""
+    from app.services.medication import MedicationService
+
+    med_service = MedicationService()
+    # Circle in Asia/Kolkata (+05:30)
+    circle_data = {"circle_id": "test_c1", "timezone": "Asia/Kolkata"}
+    tz = med_service._get_circle_tz(circle_data)
+    assert tz is not None
+
+    # Test local 09:00 IST translates to 03:30 UTC
+    dt_local = datetime(2026, 11, 15, 9, 0, tzinfo=tz)
+    dt_utc = dt_local.astimezone(timezone.utc)
+    assert dt_utc.hour == 3
+    assert dt_utc.minute == 30
+
+
+def test_production_secrets_fail_closed():
+    """Verify Settings.validate_production_secrets raises RuntimeError on default or missing secrets in production."""
+    from app.config import Settings
+    prod_settings = Settings()
+    prod_settings.ENVIRONMENT = "production"
+    prod_settings.SECRET_KEY = "carecircle-insecure-dev-secret-key-32b"
+
+    with pytest.raises(RuntimeError) as exc:
+        prod_settings.validate_production_secrets()
+    assert "insecure default or missing secret_key" in str(exc.value).lower()
+    # Ensure raw secret is not leaked in exception string
+    assert "carecircle-insecure-dev-secret-key-32b" not in str(exc.value)
+
+
+def test_https_hsts_header_conditioning():
+    """Verify HSTS Strict-Transport-Security header is only emitted on HTTPS connections."""
+    client = TestClient(app)
+
+    # 1. Plain HTTP request: No HSTS header
+    res_http = client.get("/api/health")
+    assert res_http.status_code == 200
+    assert "strict-transport-security" not in res_http.headers
+
+    # 2. HTTPS request (via X-Forwarded-Proto): HSTS present
+    res_https = client.get("/api/health", headers={"X-Forwarded-Proto": "https"})
+    assert res_https.status_code == 200
+    assert "strict-transport-security" in res_https.headers
+    assert "max-age=31536000" in res_https.headers["strict-transport-security"]
 

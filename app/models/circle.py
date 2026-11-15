@@ -41,8 +41,13 @@ class CircleUpdateRequest(BaseModel):
         max_length=30,
         description="Emergency contact phone number.",
     )
+    timezone: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="IANA timezone identifier (e.g. 'Asia/Kolkata', 'America/New_York').",
+    )
 
-    @field_validator("circle_name", "elder_name", "primary_condition", "emergency_phone")
+    @field_validator("circle_name", "elder_name", "primary_condition", "emergency_phone", "timezone")
     @classmethod
     def normalize_optional_text(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -58,6 +63,7 @@ class CircleUpdateRequest(BaseModel):
             and self.elder_dob is None
             and self.primary_condition is None
             and self.emergency_phone is None
+            and self.timezone is None
         ):
             raise ValueError("Circle update payload cannot be empty. Specify at least one field to update.")
         return self
@@ -73,6 +79,7 @@ class CircleDetailResponse(BaseModel):
     elder_profile: Dict[str, Any]
     active_member_count: int
     is_active: bool
+    timezone: Optional[str] = "UTC"
     created_at: str
     updated_at: Optional[str] = None
 

@@ -37,9 +37,9 @@ app = FastAPI(
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Enterprise defense-in-depth HTTP security and caching headers:
-    - Enforces CSP, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy.
-    - Applies long-lived immutable caching to static assets for high efficiency.
-    - Applies no-store caching to sensitive API and authenticated routes.
+    - Enforces CSP, conditional HSTS (HTTPS only), X-Content-Type-Options, X-Frame-Options, Referrer-Policy.
+    - Applies short revalidation caching to unversioned static assets (max-age=3600).
+    - Applies private no-store caching to all application HTML and API routes.
     """
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -63,12 +63,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "form-action 'self';"
         )
 
-        # High Efficiency Caching Controls
+        # Strict-Transport-Security: Only add on HTTPS connections (RFC 6797)
+        is_https = (
+            request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto") == "https"
+        )
+        if is_https:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+        # Caching Controls
         path = request.url.path
         if path.startswith("/static/"):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif path.startswith("/api/") or path.startswith("/auth/"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            # Unversioned static assets use short revalidation caching
+            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+        else:
+            # Sensitive API, auth, and private HTML pages must never be stored in public caches
+            response.headers["Cache-Control"] = "private, no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
 
         return response

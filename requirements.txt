@@ -16,5 +16,8 @@ firebase-admin>=7.0.0
 # HTTP Client (for external cron triggers and health probes)
 httpx>=0.27.0
 
+# Timezone Support
+tzdata>=2024.1
+
 # Testing
 pytest>=8.3.0

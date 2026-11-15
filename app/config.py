@@ -37,6 +37,16 @@ class Settings:
     )
     SESSION_COOKIE_NAME: str = "carecircle_session"
     SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 30  # 30 days absolute max
+
+    # Allowed Origins for CSRF & CORS
+    ALLOWED_ORIGINS: list[str] = [
+        o.strip()
+        for o in os.getenv(
+            "ALLOWED_ORIGINS",
+            "https://carecircle-catalyst.vercel.app,https://carecircle.app",
+        ).split(",")
+        if o.strip()
+    ]
     
     # CSRF Settings
     # Production uses __Host-carecircle_csrf, local dev uses carecircle_csrf
@@ -79,5 +89,36 @@ class Settings:
     TEMPLATES_DIR: Path = APP_DIR / "templates"
     STATIC_DIR: Path = APP_DIR / "static"
 
+    def validate_production_secrets(self) -> None:
+        """
+        Fail closed in production/preview environments when required secrets are missing
+        or equal to published development defaults.
+        Never prints or exposes secret values.
+        """
+        insecure_keys = {
+            "carecircle-insecure-dev-secret-key-32b",
+            "change-this-to-a-secure-random-32-byte-hex-string-in-production",
+            "dev-secret",
+            "secret",
+        }
+        insecure_bootstraps = {
+            "carecircle-bootstrap-dev-secret-change-in-prod",
+            "catalyst2026-secret-bootstrap-key",
+            "bootstrap-dev-secret",
+        }
+
+        if self.ENVIRONMENT in ("production", "preview"):
+            if not self.SECRET_KEY or self.SECRET_KEY in insecure_keys:
+                raise RuntimeError(
+                    "Production configuration error: Insecure default or missing SECRET_KEY in production. "
+                    "Set a secure random SECRET_KEY environment variable."
+                )
+            if not self.BOOTSTRAP_SECRET or self.BOOTSTRAP_SECRET in insecure_bootstraps:
+                raise RuntimeError(
+                    "Production configuration error: Insecure default or missing BOOTSTRAP_SECRET in production. "
+                    "Set a secure random BOOTSTRAP_SECRET environment variable."
+                )
+
 
 settings = Settings()
+settings.validate_production_secrets()

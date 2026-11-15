@@ -106,10 +106,9 @@
                 type="button"
                 data-dose-id="{{ item.dose_id }}"
                 data-med-name="{{ item.medication_name }}"
-                data-key-index="{{ loop.index }}"
-                aria-label="Confirm I took my {{ item.medication_name }} dose for {{ item.scheduled_time }}. You can also press key {{ loop.index }} on your keyboard.">
+                aria-label="Confirm I took my {{ item.medication_name }} dose scheduled for {{ item.scheduled_time }}.">
                 <span aria-hidden="true" style="font-size: 1.8rem;">&#10003;</span>
-                <span>I TOOK THIS MEDICINE <small style="font-weight: 400; font-size: 0.95rem; opacity: 0.9;">(Press [{{ loop.index }}])</small></span>
+                <span>I TOOK THIS MEDICINE</span>
               </button>
             {% elif item.status.value == 'paused' %}
               <div style="font-size: 1.15rem; color: var(--color-text-muted); padding: 0.75rem 0;">
@@ -212,21 +211,6 @@
           this.innerHTML = '<span aria-hidden="true">&#10003;</span><span>I TOOK THIS MEDICINE</span>';
         }
       });
-    });
-
-    // Motor Accessibility Keyboard Shortcuts (Press 1..9 to confirm dose without mouse)
-    document.addEventListener('keydown', function (e) {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
-        return;
-      }
-      const num = parseInt(e.key, 10);
-      if (!isNaN(num) && num >= 1 && num <= 9) {
-        const targetBtn = document.querySelector(`.btn-elder-action[data-key-index="${num}"]`);
-        if (targetBtn && !targetBtn.disabled) {
-          e.preventDefault();
-          targetBtn.click();
-        }
-      }
     });
   });
 </script>

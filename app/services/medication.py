@@ -1,8 +1,10 @@
 """Medication scheduling, administration, shared dose ledger, and care brief service."""
 from datetime import datetime, timedelta, timezone
 import logging
+import re
 from typing import Any, Dict, List, Optional
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
 
@@ -40,6 +42,25 @@ class MedicationService:
         self.med_repo = med_repo or FirestoreMedicationRepository()
         self.ledger_repo = ledger_repo or FirestoreDoseLedgerRepository()
         self.circle_repo = circle_repo or FirestoreCircleRepository()
+
+    def _get_circle_tz(self, circle: Optional[Dict[str, Any]]) -> Any:
+        """Resolve timezone for the care circle, defaulting safely to timezone.utc."""
+        if circle:
+            tz_str = circle.get("timezone") or circle.get("elder_profile", {}).get("timezone") or "UTC"
+            tz_clean = str(tz_str).strip()
+            if tz_clean.upper() in ("UTC", "GMT", "Z"):
+                return timezone.utc
+            try:
+                from zoneinfo import ZoneInfo
+                return ZoneInfo(tz_clean)
+            except Exception:
+                if tz_clean == "Asia/Kolkata":
+                    return timezone(timedelta(hours=5, minutes=30), name="IST")
+                elif tz_clean in ("America/New_York", "US/Eastern"):
+                    return timezone(timedelta(hours=-5), name="EST")
+                elif tz_clean in ("America/Los_Angeles", "US/Pacific"):
+                    return timezone(timedelta(hours=-8), name="PST")
+        return timezone.utc
 
     # =========================================================================
     # Medication Regimen Management
@@ -208,13 +229,18 @@ class MedicationService:
     ) -> List[DoseItemResponse]:
         """
         Generate deterministic daily dose schedule for target_date (YYYY-MM-DD).
+        - Resolves care circle timezone (e.g. Asia/Kolkata).
         - Computes deterministic dose_id for each time slot.
         - Correlates with immutable ledger records.
         - Evaluates status transitions: UPCOMING -> DUE -> CONFIRMED / OVERDUE / MISSED / PAUSED.
         - Enforces role-based action permissions: Family members have read-only observer view.
         """
-        now = datetime.now(timezone.utc)
-        today_str = now.strftime("%Y-%m-%d")
+        circle = await self.circle_repo.get_circle(circle_id)
+        circle_tz = self._get_circle_tz(circle)
+
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_utc.astimezone(circle_tz)
+        today_str = now_local.strftime("%Y-%m-%d")
         eval_date = target_date.strip() if target_date else today_str
 
         # Bounded query: active medications only
@@ -242,7 +268,13 @@ class MedicationService:
 
             for time_str in times:
                 dose_id = make_deterministic_dose_id(circle_id, med["med_id"], eval_date, time_str)
-                scheduled_iso = f"{eval_date}T{time_str}:00+00:00"
+                try:
+                    dt_local = datetime.strptime(f"{eval_date} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=circle_tz)
+                    sched_dt_utc = dt_local.astimezone(timezone.utc)
+                    scheduled_iso = sched_dt_utc.isoformat()
+                except Exception:
+                    sched_dt_utc = datetime.fromisoformat(f"{eval_date}T{time_str}:00+00:00")
+                    scheduled_iso = sched_dt_utc.isoformat()
 
                 # Check if already logged in ledger
                 ledger_record = ledger_lookup.get(dose_id)
@@ -307,14 +339,12 @@ class MedicationService:
                     )
                     continue
 
-                # Deterministic time calculation for pending doses
-                sched_dt = datetime.fromisoformat(scheduled_iso)
-
-                if now < sched_dt - timedelta(minutes=30):
+                # Deterministic time calculation for pending doses against UTC
+                if now_utc < sched_dt_utc - timedelta(minutes=30):
                     dose_status = DoseStatus.UPCOMING
                     status_label = "Upcoming"
                     can_confirm = (not is_family)
-                elif sched_dt - timedelta(minutes=30) <= now <= sched_dt + timedelta(minutes=60):
+                elif sched_dt_utc - timedelta(minutes=30) <= now_utc <= sched_dt_utc + timedelta(minutes=60):
                     dose_status = DoseStatus.DUE
                     status_label = "Due Now"
                     can_confirm = (not is_family)
@@ -363,7 +393,17 @@ class MedicationService:
         """
         Atomically record dose confirmation into immutable shared ledger.
         - Enforces role RBAC: Family members strictly prohibited.
-        - Enforces deterministic duplicate prevention: Concurrent or duplicate confirmations
+        - Enforces tenant isolation: Dose must belong to circle.
+        - Enforces strict backend validation:
+          * Dose ID matches expected deterministic format.
+          * Scheduled date and time format and values are valid.
+          * Medication is active and not paused.
+          * Scheduled time belongs to medication regimen.
+          * Scheduled date falls within medication regimen start/end dates.
+          * Confirmation window: cannot confirm future dates, past missed dates,
+            or same-day occurrences more than 60 minutes before scheduled time.
+          * Elders can only confirm doses for their own elder_id profile.
+        - Enforces atomic single confirmation: Concurrent or duplicate confirmations
           are rejected atomically with HTTP 409 Conflict via DoseConflictError.
         """
         # Role guard: Family role is read-only observer
@@ -392,6 +432,26 @@ class MedicationService:
         sched_date = parts[2]
         sched_time = parts[3].replace("-", ":")
 
+        # Validate date and time string format
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", sched_date):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid scheduled date format in dose_id.")
+        if not re.match(r"^\d{2}:\d{2}$", sched_time):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid scheduled time format in dose_id.")
+
+        try:
+            datetime.strptime(sched_date, "%Y-%m-%d")
+            datetime.strptime(sched_time, "%H:%M")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid scheduled date or time values in dose_id.")
+
+        # Verify exact deterministic dose_id pattern
+        expected_dose_id = make_deterministic_dose_id(circle_id, med_id, sched_date, sched_time)
+        if dose_id != expected_dose_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid dose_id: does not match expected deterministic occurrence pattern.",
+            )
+
         # Validate medication belongs to current circle
         try:
             med = await self.med_repo.get_medication(circle_id, med_id)
@@ -403,6 +463,83 @@ class MedicationService:
                 detail="Medication not found in care circle.",
             )
 
+        # Validate medication is active and not paused
+        if not med.get("is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot confirm dose: medication is discontinued or inactive.",
+            )
+        if med.get("is_paused", False):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot confirm dose: medication is currently paused.",
+            )
+
+        # Validate occurrence is part of medication scheduled times
+        if sched_time not in med.get("scheduled_times", []):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Scheduled time '{sched_time}' is not part of medication regimen.",
+            )
+
+        # Validate date is within medication regimen boundaries
+        start_date = med.get("start_date")
+        end_date = med.get("end_date")
+        if start_date and sched_date < start_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dose date {sched_date} is before medication start date {start_date}.",
+            )
+        if end_date and sched_date > end_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dose date {sched_date} is after medication end date {end_date}.",
+            )
+
+        # Validate elder authorization: elder can only confirm their own dose
+        if confirming_member.role == MemberRole.ELDER:
+            med_elder_id = med.get("elder_id")
+            if med_elder_id and confirming_member.member_id != med_elder_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access forbidden: Elders can only confirm doses for their own medication profile.",
+                )
+
+        # Validate confirmation window in care circle's timezone
+        circle = await self.circle_repo.get_circle(circle_id)
+        circle_tz = self._get_circle_tz(circle)
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_utc.astimezone(circle_tz)
+        today_str = now_local.strftime("%Y-%m-%d")
+
+        # Reject confirmation of future dates
+        if sched_date > today_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot confirm future dose. Scheduled date '{sched_date}' is in the future.",
+            )
+
+        # Reject confirmation of past missed dates
+        if sched_date < today_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot confirm missed doses from past dates ({sched_date}).",
+            )
+
+        # For today's doses, parse local time and convert to UTC for window check
+        try:
+            dt_local = datetime.strptime(f"{sched_date} {sched_time}", "%Y-%m-%d %H:%M").replace(tzinfo=circle_tz)
+            sched_dt_utc = dt_local.astimezone(timezone.utc)
+        except Exception:
+            sched_dt_utc = datetime.fromisoformat(f"{sched_date}T{sched_time}:00+00:00")
+
+        # Reject if attempting to confirm more than 60 minutes early
+        if now_utc < sched_dt_utc - timedelta(minutes=60):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot confirm dose more than 60 minutes before scheduled time.",
+            )
+
         initial_meta = {
             "elder_id": med.get("elder_id", ""),
             "medication_id": med["med_id"],
@@ -410,7 +547,7 @@ class MedicationService:
             "dosage_instructions": med["dosage_instructions"],
             "scheduled_date": sched_date,
             "scheduled_time": sched_time,
-            "scheduled_datetime_utc": f"{sched_date}T{sched_time}:00+00:00",
+            "scheduled_datetime_utc": sched_dt_utc.isoformat(),
             "source": "elder_tap" if confirming_member.role == MemberRole.ELDER else "caregiver_log",
         }
 
@@ -438,7 +575,7 @@ class MedicationService:
             dosage_instructions=med["dosage_instructions"],
             scheduled_date=sched_date,
             scheduled_time=sched_time,
-            scheduled_iso=f"{sched_date}T{sched_time}:00+00:00",
+            scheduled_iso=sched_dt_utc.isoformat(),
             status=DoseStatus.TAKEN,
             status_label="Confirmed",
             is_taken=True,
@@ -471,8 +608,11 @@ class MedicationService:
         - Analyzes confirmed vs pending vs overdue doses.
         - Strictly factual: never diagnoses, prescribes, or claims unverified events.
         """
-        now = datetime.now(timezone.utc)
-        today_str = now.strftime("%Y-%m-%d")
+        circle = await self.circle_repo.get_circle(circle_id)
+        circle_tz = self._get_circle_tz(circle)
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_utc.astimezone(circle_tz)
+        today_str = now_local.strftime("%Y-%m-%d")
         eval_date = target_date.strip() if target_date else today_str
 
         doses = await self.get_daily_schedule(circle_id, member, target_date=eval_date)
@@ -563,5 +703,5 @@ class MedicationService:
             bullet_points=bullet_points,
             next_dose_summary=next_dose_summary,
             last_confirmed_summary=last_confirmed_summary,
-            generated_at=now.isoformat(),
+            generated_at=now_utc.isoformat(),
         )

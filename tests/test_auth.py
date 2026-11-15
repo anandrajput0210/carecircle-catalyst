@@ -150,10 +150,11 @@ def test_is_allowed_origin():
     assert is_allowed_origin("http://127.0.0.1:3000") is True
     assert is_allowed_origin("http://testserver") is True
     assert is_allowed_origin("https://carecircle-catalyst.vercel.app") is True
-    assert is_allowed_origin("https://preview-123.vercel.app") is True
+    assert is_allowed_origin("https://carecircle-catalyst-git-master.vercel.app") is True
 
-    # Block attacker origins
+    # Block attacker origins and unrelated vercel domains
     assert is_allowed_origin("https://evil-attacker.com") is False
+    assert is_allowed_origin("https://unrelated-app.vercel.app") is False
     assert is_allowed_origin("http://localhost.attacker.com") is False
     assert is_allowed_origin(None) is False
 

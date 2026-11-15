@@ -137,29 +137,61 @@ class FirestoreDoseLedgerRepository(DoseLedgerRepositoryInterface):
 
             @firestore.transactional
             def _transact_dose(txn):
+                # 1. READ: Execute document read exactly once BEFORE any writes
                 snapshot = dose_ref.get(transaction=txn)
-                if not snapshot.exists:
-                    # If document does not exist yet, prepare initial pending record
-                    meta = initial_dose_meta or {}
-                    initial_record = {
-                        "dose_id": dose_id,
-                        "circle_id": context.circle_id,
-                        "status": "pending",
-                        "created_at": now_iso,
-                        **meta,
-                    }
-                    txn.set(dose_ref, initial_record)
 
-                # Now execute standard atomic confirmation verification
-                return execute_atomic_dose_confirmation(
-                    transaction=txn,
-                    dose_ref=dose_ref,
-                    logged_by_member_id=logged_by_member_id,
-                    logged_by_name=logged_by_name,
-                    logged_by_role=logged_by_role,
-                    notes=notes,
-                    server_timestamp=now_iso,
-                )
+                confirmed_payload = {
+                    "dose_id": dose_id,
+                    "circle_id": context.circle_id,
+                    "status": "taken",
+                    "logged_by_member_id": logged_by_member_id,
+                    "logged_by_name": logged_by_name,
+                    "logged_by_role": logged_by_role,
+                    "logged_at": now_iso,
+                    "confirmed_by_name": logged_by_name,
+                    "confirmed_by_role": logged_by_role,
+                    "recorded_at": now_iso,
+                    "confirmed_method": "administered" if notes and "admin" in notes.lower() else "observed",
+                    "notes": notes or "",
+                }
+
+                if not snapshot.exists:
+                    # 2a. WRITE: First confirmation — create the final confirmed record directly
+                    meta = initial_dose_meta or {}
+                    final_record = {
+                        **meta,
+                        **confirmed_payload,
+                    }
+                    context.validate_payload(final_record)
+                    txn.set(dose_ref, final_record)
+                    return final_record
+
+                # Document exists: validate tenant ownership and verify pending status
+                current_data = snapshot.to_dict() or {}
+                context.validate_document(current_data)
+                current_status = current_data.get("status", "pending")
+
+                if current_status != "pending":
+                    already_by = (
+                        current_data.get("logged_by_name")
+                        or current_data.get("confirmed_by_name")
+                        or "another member"
+                    )
+                    already_at = (
+                        current_data.get("logged_at")
+                        or current_data.get("recorded_at")
+                        or "earlier"
+                    )
+                    raise DoseConflictError(
+                        message=f"Dose was already recorded as '{current_status}' by {already_by} at {already_at}.",
+                        existing_status=current_status,
+                        logged_by=already_by,
+                    )
+
+                # 2b. WRITE: Document was pending — update directly to confirmed status
+                txn.update(dose_ref, confirmed_payload)
+                current_data.update(confirmed_payload)
+                return current_data
 
             return _transact_dose(transaction)
 
