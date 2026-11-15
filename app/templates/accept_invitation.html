@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Accept Invitation — CareCircle{% endblock %}
+
+{% block content %}
+<section class="auth-section" aria-labelledby="accept-invite-title">
+  <div class="auth-container">
+    <h1 id="accept-invite-title" class="auth-heading">Join CareCircle</h1>
+    <p class="auth-subheading">You have been invited to join a collaborative care coordination circle.</p>
+
+    <!-- Error / Success Alert Box -->
+    <div id="accept-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+
+    <!-- Invitation Details Box -->
+    <div id="invite-inspect-card" class="card" style="margin-bottom: 1.5rem; display: none;">
+      <h2 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Invitation Details</h2>
+      <p style="margin-bottom: 0.5rem;">
+        Care Circle: <strong id="inv-circle-name">—</strong>
+      </p>
+      <p style="margin-bottom: 0.5rem;">
+        Assigned Role: <span id="inv-role-badge" class="badge-role badge-role-caregiver">—</span>
+      </p>
+      <p style="margin-bottom: 0.25rem; font-size: 0.9rem; color: var(--color-text-muted);">
+        Expires: <span id="inv-expires-at">—</span>
+      </p>
+    </div>
+
+    <!-- Acceptance Registration Form -->
+    <form id="form-accept-invitation" class="auth-form" style="display: none;" novalidate>
+      <input type="hidden" id="raw-invite-token" value="{{ token }}">
+
+      <div class="form-group">
+        <label for="member-display-name">Your Full Name</label>
+        <input
+          type="text"
+          id="member-display-name"
+          name="display_name"
+          class="form-input"
+          placeholder="e.g. Maria Gonzalez"
+          required
+          minlength="1"
+          maxlength="100"
+          autocomplete="name"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="member-username">Choose a Username</label>
+        <input
+          type="text"
+          id="member-username"
+          name="username"
+          class="form-input"
+          placeholder="e.g. maria_g"
+          required
+          minlength="3"
+          maxlength="100"
+          autocomplete="username"
+          aria-describedby="username-hint"
+        >
+        <small id="username-hint" class="form-hint">Used to sign in to CareCircle across devices.</small>
+      </div>
+
+      <div class="form-group">
+        <label for="member-password">Create Password</label>
+        <input
+          type="password"
+          id="member-password"
+          name="password"
+          class="form-input"
+          placeholder="••••••••"
+          required
+          minlength="8"
+          maxlength="128"
+          autocomplete="new-password"
+          aria-describedby="password-hint"
+        >
+        <small id="password-hint" class="form-hint">Minimum 8 characters.</small>
+      </div>
+
+      <div class="form-group">
+        <label for="member-password-confirm">Confirm Password</label>
+        <input
+          type="password"
+          id="member-password-confirm"
+          name="password_confirm"
+          class="form-input"
+          placeholder="••••••••"
+          required
+          minlength="8"
+          maxlength="128"
+          autocomplete="new-password"
+        >
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-submit-accept">
+        Accept Invitation &amp; Join Circle
+      </button>
+    </form>
+
+    <!-- Missing / Invalid Token Placeholder -->
+    <div id="invalid-token-placeholder" class="card" style="display: none; text-align: center; padding: 2rem;">
+      <p style="color: var(--color-danger); font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">
+        Invitation Link Invalid or Expired
+      </p>
+      <p style="color: var(--color-text-muted); margin-bottom: 1.5rem;">
+        This invitation link may have expired (links are valid for 48 hours), was already redeemed, or is incorrect.
+      </p>
+      <a href="/auth/login" class="btn btn-secondary btn-sm">Return to Sign In</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function showAlert(message, isSuccess = false) {
+    const box = document.getElementById('accept-alert');
+    box.textContent = message;
+    box.className = isSuccess ? 'alert-box alert-success' : 'alert-box alert-error';
+  }
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const tokenInput = document.getElementById('raw-invite-token');
+    const token = tokenInput ? tokenInput.value.trim() : '';
+
+    if (!token) {
+      document.getElementById('invalid-token-placeholder').style.display = 'block';
+      showAlert('No invitation token provided. Please check the link from your caregiver.');
+      return;
+    }
+
+    // Inspect invitation via public endpoint
+    try {
+      const res = await fetch(`/api/invitations/inspect?token=${encodeURIComponent(token)}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.valid) {
+        document.getElementById('invalid-token-placeholder').style.display = 'block';
+        showAlert(data.detail || 'This invitation is invalid or has expired.');
+        return;
+      }
+
+      // Display inspection details
+      document.getElementById('inv-circle-name').textContent = data.circle_name;
+      const roleBadge = document.getElementById('inv-role-badge');
+      if (data.role === 'caregiver') {
+        roleBadge.textContent = 'Caregiver';
+        roleBadge.className = 'badge-role badge-role-caregiver';
+      } else {
+        roleBadge.textContent = 'Family Member';
+        roleBadge.className = 'badge-role badge-role-family';
+      }
+
+      if (data.invited_name) {
+        const nameInput = document.getElementById('member-display-name');
+        if (nameInput) nameInput.value = data.invited_name;
+      }
+
+      if (data.expires_at) {
+        document.getElementById('inv-expires-at').textContent = data.expires_at.slice(0, 16).replace('T', ' ') + ' UTC';
+      }
+
+      document.getElementById('invite-inspect-card').style.display = 'block';
+      document.getElementById('form-accept-invitation').style.display = 'block';
+    } catch (err) {
+      document.getElementById('invalid-token-placeholder').style.display = 'block';
+      showAlert('Unable to inspect invitation link due to network error.');
+    }
+  });
+
+  // Handle Acceptance Form Submission
+  const formAccept = document.getElementById('form-accept-invitation');
+  if (formAccept) {
+    formAccept.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-accept');
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+
+      const token = document.getElementById('raw-invite-token').value.trim();
+      const displayName = document.getElementById('member-display-name').value.trim();
+      const username = document.getElementById('member-username').value.trim();
+      const password = document.getElementById('member-password').value;
+      const confirmPassword = document.getElementById('member-password-confirm').value;
+
+      if (password !== confirmPassword) {
+        showAlert('Passwords do not match. Please verify and try again.');
+        btn.disabled = false;
+        btn.textContent = 'Accept Invitation & Join Circle';
+        return;
+      }
+
+      const payload = {
+        invite_token: token,
+        display_name: displayName,
+        username: username,
+        password: password,
+      };
+
+      try {
+        const res = await fetch('/api/invitations/accept', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          showAlert('Welcome to CareCircle! Redirecting to your care circle...', true);
+          setTimeout(() => {
+            window.location.href = '/circle';
+          }, 1200);
+        } else {
+          showAlert(data.detail || 'Failed to accept invitation.');
+          btn.disabled = false;
+          btn.textContent = 'Accept Invitation & Join Circle';
+        }
+      } catch (err) {
+        showAlert('Network error occurred. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Accept Invitation & Join Circle';
+      }
+    });
+  }
+</script>
+{% endblock %}

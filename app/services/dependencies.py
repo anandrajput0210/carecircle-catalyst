@@ -5,12 +5,22 @@ from fastapi import Depends, HTTPException, Request, status
 from app.config import settings
 from app.models.auth import MemberDoc, MemberRole, SessionData
 from app.repositories.firestore_circle import FirestoreCircleRepository
+from app.repositories.firestore_invitation import FirestoreInvitationRepository
+from app.services.circle import CircleService
 from app.services.firestore import CircleSecurityContext
+from app.services.invitation import InvitationService
 from app.services.session import SessionService
 
 # Singleton instances for dependency injection
 _circle_repo = FirestoreCircleRepository()
+_invitation_repo = FirestoreInvitationRepository()
 _session_service = SessionService(circle_repo=_circle_repo)
+_circle_service = CircleService(circle_repo=_circle_repo)
+_invitation_service = InvitationService(
+    invitation_repo=_invitation_repo,
+    circle_repo=_circle_repo,
+    session_service=_session_service,
+)
 
 
 def get_circle_repository() -> FirestoreCircleRepository:
@@ -18,9 +28,24 @@ def get_circle_repository() -> FirestoreCircleRepository:
     return _circle_repo
 
 
+def get_invitation_repository() -> FirestoreInvitationRepository:
+    """Dependency provider for FirestoreInvitationRepository."""
+    return _invitation_repo
+
+
 def get_session_service() -> SessionService:
     """Dependency provider for SessionService."""
     return _session_service
+
+
+def get_circle_service() -> CircleService:
+    """Dependency provider for CircleService."""
+    return _circle_service
+
+
+def get_invitation_service() -> InvitationService:
+    """Dependency provider for InvitationService."""
+    return _invitation_service
 
 
 def get_current_session_token(request: Request) -> Optional[str]:

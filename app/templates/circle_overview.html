@@ -1,0 +1,565 @@
+{% extends "base.html" %}
+
+{% block title %}{{ circle.name }} — CareCircle{% endblock %}
+
+{% block content %}
+<section class="circle-overview-section" aria-labelledby="circle-title">
+  <!-- Header Banner -->
+  <div class="hero">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <span class="badge badge-catalyst">Care Circle</span>
+        <h1 id="circle-title" style="margin-bottom: 0.5rem;">{{ circle.name }}</h1>
+        <p class="lead" style="margin-bottom: 0.75rem;">
+          Collaborative care and medication coordination team for <strong>{{ circle.elder_profile.get('name', 'Elder') }}</strong>.
+        </p>
+      </div>
+      <div style="text-align: right;">
+        <span style="font-size: 0.9rem; font-weight: 700; color: var(--color-text-muted); display: block;">CIRCLE CODE</span>
+        <span class="display-code" id="circle-code-display" title="6-character Circle Code for Elder Login">{{ circle.circle_code }}</span>
+      </div>
+    </div>
+
+    <!-- Alert / Toast Container -->
+    <div id="overview-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+
+    <!-- Quick Stats & Actions -->
+    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-top: 1rem;">
+      <span class="badge badge-role-primary" style="font-size: 1rem; padding: 0.5rem 1rem;">
+        &#128101; Active Members: <strong>{{ circle.active_member_count }}</strong>
+      </span>
+      {% if is_primary %}
+        <button id="btn-open-edit-circle" class="btn btn-secondary btn-sm" type="button">
+          &#9998; Edit Circle &amp; Elder Profile
+        </button>
+        <button id="btn-open-invite" class="btn btn-primary btn-sm" type="button">
+          &#43; Invite Member
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Elder Healthcare Profile Card -->
+  <div class="card" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+      <span>&#129658;</span> Elder Healthcare Profile
+    </h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.25rem;">
+      <div>
+        <span style="color: var(--color-text-muted); font-size: 0.9rem; display: block;">Elder Name</span>
+        <strong style="font-size: 1.15rem;">{{ circle.elder_profile.get('name', 'Not set') }}</strong>
+      </div>
+      <div>
+        <span style="color: var(--color-text-muted); font-size: 0.9rem; display: block;">Date of Birth</span>
+        <strong style="font-size: 1.15rem;">{{ circle.elder_profile.get('dob', 'Not specified') }}</strong>
+      </div>
+      <div>
+        <span style="color: var(--color-text-muted); font-size: 0.9rem; display: block;">Primary Condition</span>
+        <strong style="font-size: 1.15rem;">{{ circle.elder_profile.get('primary_condition', 'None recorded') }}</strong>
+      </div>
+      <div>
+        <span style="color: var(--color-text-muted); font-size: 0.9rem; display: block;">Emergency Contact</span>
+        <strong style="font-size: 1.15rem;">{{ circle.elder_profile.get('emergency_phone', 'None recorded') }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Roster Section -->
+  <div style="margin-bottom: 2.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
+      <h2 style="font-size: 1.5rem;">Circle Membership Roster</h2>
+      {% if is_primary %}
+        <button class="btn btn-primary btn-sm" type="button" onclick="document.getElementById('btn-open-invite').click()">
+          &#43; Invite Caregiver or Family
+        </button>
+      {% endif %}
+    </div>
+    <p style="color: var(--color-text-muted); margin-bottom: 1rem;">
+      All verified participants authorized to coordinate care, administer medications, or observe status.
+    </p>
+
+    <div class="table-responsive">
+      <table class="table" aria-label="Circle Members Roster">
+        <thead>
+          <tr>
+            <th scope="col">Member Name</th>
+            <th scope="col">Username</th>
+            <th scope="col">Role</th>
+            <th scope="col">Status</th>
+            <th scope="col">Joined</th>
+            {% if is_primary %}
+            <th scope="col" style="text-align: right;">Actions</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr class="{% if not m.is_active %}inactive-row{% endif %}">
+            <td>
+              <strong>{{ m.display_name }}</strong>
+              {% if m.is_primary %}
+                <span class="badge badge-role-primary" style="margin-left: 0.35rem; font-size: 0.75rem;">Primary</span>
+              {% endif %}
+            </td>
+            <td><code>{{ m.username }}</code></td>
+            <td>
+              {% if m.role.value == 'elder' %}
+                <span class="badge-role badge-role-elder">Elder</span>
+              {% elif m.role.value == 'caregiver' %}
+                <span class="badge-role badge-role-caregiver">Caregiver</span>
+              {% else %}
+                <span class="badge-role badge-role-family">Family</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if m.is_active %}
+                <span class="badge badge-status-active">Active</span>
+              {% else %}
+                <span class="badge badge-status-inactive">Deactivated</span>
+              {% endif %}
+            </td>
+            <td style="font-size: 0.95rem; color: var(--color-text-muted);">
+              {{ m.created_at[:10] }}
+            </td>
+            {% if is_primary %}
+            <td style="text-align: right;">
+              {% if m.is_active and not (m.is_primary and m.member_id == member.member_id) %}
+                <button
+                  type="button"
+                  class="btn btn-danger btn-sm btn-deactivate"
+                  data-member-id="{{ m.member_id }}"
+                  data-member-name="{{ m.display_name }}"
+                  data-is-primary="{{ m.is_primary }}"
+                  aria-label="Deactivate {{ m.display_name }}"
+                >
+                  Deactivate
+                </button>
+              {% elif not m.is_active %}
+                <span style="font-size: 0.85rem; color: var(--color-text-muted);">Deactivated</span>
+              {% else %}
+                <span style="font-size: 0.85rem; color: var(--color-text-muted);">You (Primary)</span>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Circle Invitations (Primary Caregiver Only) -->
+  {% if is_primary %}
+  <div style="margin-bottom: 2.5rem;">
+    <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Active &amp; Recent Invitations</h2>
+    <p style="color: var(--color-text-muted); margin-bottom: 1rem;">
+      Invitations expire automatically after 48 hours. Once accepted, they cannot be reused.
+    </p>
+
+    {% if invitations %}
+    <div class="table-responsive">
+      <table class="table" aria-label="Care Circle Invitations">
+        <thead>
+          <tr>
+            <th scope="col">Invited For</th>
+            <th scope="col">Role</th>
+            <th scope="col">Status</th>
+            <th scope="col">Created</th>
+            <th scope="col">Expires</th>
+            <th scope="col" style="text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invitations %}
+          <tr>
+            <td>
+              <strong>{{ inv.invited_name or inv.invited_email or 'New Member' }}</strong>
+              {% if inv.invited_email %}
+                <span style="display: block; font-size: 0.85rem; color: var(--color-text-muted);">{{ inv.invited_email }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if inv.role.value == 'caregiver' %}
+                <span class="badge-role badge-role-caregiver">Caregiver</span>
+              {% else %}
+                <span class="badge-role badge-role-family">Family</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if inv.status == 'pending' %}
+                <span class="badge badge-warning" style="background-color: var(--color-warning-bg); color: var(--color-warning);">Pending</span>
+              {% elif inv.status == 'accepted' %}
+                <span class="badge badge-status-active">Accepted</span>
+              {% elif inv.status == 'revoked' %}
+                <span class="badge badge-status-inactive">Revoked</span>
+              {% else %}
+                <span class="badge badge-status-inactive">Expired</span>
+              {% endif %}
+            </td>
+            <td style="font-size: 0.95rem;">{{ inv.created_at[:16].replace('T', ' ') }}</td>
+            <td style="font-size: 0.95rem;">{{ inv.expires_at[:16].replace('T', ' ') }}</td>
+            <td style="text-align: right;">
+              {% if inv.status == 'pending' %}
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm btn-revoke-invitation"
+                  data-invitation-id="{{ inv.invitation_id }}"
+                  style="border-color: var(--color-danger); color: var(--color-danger);"
+                >
+                  Revoke
+                </button>
+              {% else %}
+                <span style="color: var(--color-text-muted); font-size: 0.85rem;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: 2rem;">
+      <p style="color: var(--color-text-muted); margin-bottom: 1rem;">No invitations generated yet.</p>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('btn-open-invite').click()">
+        Generate an Invitation Link
+      </button>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- ======================================================================== -->
+<!-- MODALS (Hidden by default) -->
+<!-- ======================================================================== -->
+
+{% if is_primary %}
+<!-- 1. Invite Member Modal -->
+<div id="modal-invite" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-invite-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-invite-title" class="modal-title">Invite Member to CareCircle</h3>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeModal('modal-invite')">&times;</button>
+    </div>
+    <div id="invite-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+    <form id="form-create-invite">
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="invite-role">Member Role</label>
+        <select id="invite-role" name="role" class="form-input" required>
+          <option value="caregiver">Caregiver (Full Care Coordination)</option>
+          <option value="family">Family Member (Observer / Status View)</option>
+        </select>
+        <small class="form-hint">Elders are added directly to the circle and cannot be invited via links.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="invite-name">Invitee Name (Optional)</label>
+        <input type="text" id="invite-name" name="invited_name" class="form-input" placeholder="e.g. Dr. Sarah Jenkins" maxlength="100">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="invite-email">Invitee Email (Optional)</label>
+        <input type="email" id="invite-email" name="invited_email" class="form-input" placeholder="e.g. sarah@example.com" maxlength="120">
+        <small class="form-hint">For your reference; an invitation link will be generated for you to share directly.</small>
+      </div>
+
+      <div id="invite-result-container" class="hidden" style="margin-top: 1rem;">
+        <p style="font-weight: 700; color: var(--color-success); margin-bottom: 0.5rem;">
+          &#10004; Invitation Link Generated (valid for 48 hours):
+        </p>
+        <div class="copy-link-box">
+          <input type="text" id="generated-invite-url" class="copy-link-input" readonly>
+          <button type="button" id="btn-copy-invite" class="btn btn-primary btn-sm">Copy</button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-invite')">Cancel</button>
+        <button type="submit" id="btn-submit-invite" class="btn btn-primary btn-sm">Generate Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 2. Edit Circle & Elder Profile Modal -->
+<div id="modal-edit-circle" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-edit-title" class="modal-title">Edit Circle &amp; Elder Profile</h3>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeModal('modal-edit-circle')">&times;</button>
+    </div>
+    <div id="edit-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+    <form id="form-edit-circle">
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="edit-circle-name">Care Circle Name</label>
+        <input type="text" id="edit-circle-name" name="circle_name" class="form-input" value="{{ circle.name }}" required minlength="2" maxlength="100">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="edit-elder-name">Elder Display Name</label>
+        <input type="text" id="edit-elder-name" name="elder_name" class="form-input" value="{{ circle.elder_profile.get('name', '') }}" required minlength="1" maxlength="100">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="edit-elder-dob">Elder Date of Birth</label>
+        <input type="date" id="edit-elder-dob" name="elder_dob" class="form-input" value="{{ circle.elder_profile.get('dob', '') }}">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="edit-primary-condition">Primary Medical Condition</label>
+        <input type="text" id="edit-primary-condition" name="primary_condition" class="form-input" value="{{ circle.elder_profile.get('primary_condition', '') }}" maxlength="200">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="edit-emergency-phone">Emergency Phone Number</label>
+        <input type="tel" id="edit-emergency-phone" name="emergency_phone" class="form-input" value="{{ circle.elder_profile.get('emergency_phone', '') }}" maxlength="30">
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-edit-circle')">Cancel</button>
+        <button type="submit" id="btn-submit-edit" class="btn btn-primary btn-sm">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 3. Deactivate Member Confirmation Modal -->
+<div id="modal-deactivate" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-deactivate-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-deactivate-title" class="modal-title" style="color: var(--color-danger);">Confirm Member Deactivation</h3>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeModal('modal-deactivate')">&times;</button>
+    </div>
+    <div id="deactivate-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+    <div style="margin-bottom: 1.5rem;">
+      <p style="margin-bottom: 0.75rem;">
+        Are you sure you want to deactivate <strong id="deactivate-target-name"></strong>?
+      </p>
+      <div style="background-color: var(--color-danger-bg); border-left: 4px solid var(--color-danger); padding: 0.75rem; border-radius: 4px;">
+        <p style="font-size: 0.95rem; color: var(--color-danger); margin: 0;">
+          <strong>Security Action:</strong> This member's active sessions will be terminated immediately. Their historical dose confirmations and logs will be preserved.
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-deactivate')">Cancel</button>
+      <button type="button" id="btn-confirm-deactivate" class="btn btn-danger btn-sm">Deactivate Account</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  let targetDeactivateId = null;
+
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('hidden');
+  }
+
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  }
+
+  function showAlert(containerId, message, isSuccess = false) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    box.textContent = message;
+    box.className = isSuccess ? 'alert-box alert-success' : 'alert-box alert-error';
+  }
+
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
+  // Edit Circle Modal Open
+  const btnOpenEdit = document.getElementById('btn-open-edit-circle');
+  if (btnOpenEdit) {
+    btnOpenEdit.addEventListener('click', () => openModal('modal-edit-circle'));
+  }
+
+  // Invite Modal Open
+  const btnOpenInvite = document.getElementById('btn-open-invite');
+  if (btnOpenInvite) {
+    btnOpenInvite.addEventListener('click', () => {
+      document.getElementById('invite-result-container').classList.add('hidden');
+      document.getElementById('btn-submit-invite').classList.remove('hidden');
+      openModal('modal-invite');
+    });
+  }
+
+  // Handle Edit Circle Form Submission
+  const formEdit = document.getElementById('form-edit-circle');
+  if (formEdit) {
+    formEdit.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-edit');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      const payload = {
+        circle_name: document.getElementById('edit-circle-name').value.trim() || null,
+        elder_name: document.getElementById('edit-elder-name').value.trim() || null,
+        elder_dob: document.getElementById('edit-elder-dob').value.trim() || null,
+        primary_condition: document.getElementById('edit-primary-condition').value.trim() || null,
+        emergency_phone: document.getElementById('edit-emergency-phone').value.trim() || null,
+      };
+
+      try {
+        const res = await fetch('/api/circle', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          showAlert('overview-alert', 'Circle details updated successfully.', true);
+          closeModal('modal-edit-circle');
+          window.location.reload();
+        } else {
+          showAlert('edit-alert', data.detail || 'Failed to update circle metadata.');
+        }
+      } catch (err) {
+        showAlert('edit-alert', 'Network error occurred. Please try again.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+      }
+    });
+  }
+
+  // Handle Create Invite Form Submission
+  const formInvite = document.getElementById('form-create-invite');
+  if (formInvite) {
+    formInvite.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-invite');
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+
+      const payload = {
+        role: document.getElementById('invite-role').value,
+        invited_name: document.getElementById('invite-name').value.trim() || null,
+        invited_email: document.getElementById('invite-email').value.trim() || null,
+      };
+
+      try {
+        const res = await fetch('/api/circle/invitations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('generated-invite-url').value = data.invite_url;
+          document.getElementById('invite-result-container').classList.remove('hidden');
+          btn.classList.add('hidden');
+          showAlert('invite-alert', 'Invitation generated successfully.', true);
+        } else {
+          showAlert('invite-alert', data.detail || 'Failed to generate invitation.');
+        }
+      } catch (err) {
+        showAlert('invite-alert', 'Network error occurred.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Link';
+      }
+    });
+  }
+
+  // Copy Generated Link Button
+  const btnCopy = document.getElementById('btn-copy-invite');
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      const copyInput = document.getElementById('generated-invite-url');
+      copyInput.select();
+      navigator.clipboard.writeText(copyInput.value);
+      btnCopy.textContent = 'Copied!';
+      setTimeout(() => { btnCopy.textContent = 'Copy'; }, 2000);
+    });
+  }
+
+  // Setup Deactivate Buttons
+  document.querySelectorAll('.btn-deactivate').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      targetDeactivateId = btn.getAttribute('data-member-id');
+      const name = btn.getAttribute('data-member-name');
+      document.getElementById('deactivate-target-name').textContent = name;
+      openModal('modal-deactivate');
+    });
+  });
+
+  // Confirm Deactivate
+  const btnConfirmDeactivate = document.getElementById('btn-confirm-deactivate');
+  if (btnConfirmDeactivate) {
+    btnConfirmDeactivate.addEventListener('click', async () => {
+      if (!targetDeactivateId) return;
+      btnConfirmDeactivate.disabled = true;
+      btnConfirmDeactivate.textContent = 'Deactivating...';
+
+      try {
+        const res = await fetch(`/api/circle/members/${targetDeactivateId}/deactivate`, {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': getCsrfToken(),
+          },
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          closeModal('modal-deactivate');
+          window.location.reload();
+        } else {
+          showAlert('deactivate-alert', data.detail || 'Failed to deactivate member.');
+        }
+      } catch (err) {
+        showAlert('deactivate-alert', 'Network error occurred.');
+      } finally {
+        btnConfirmDeactivate.disabled = false;
+        btnConfirmDeactivate.textContent = 'Deactivate Account';
+      }
+    });
+  }
+
+  // Setup Revoke Invitation Buttons
+  document.querySelectorAll('.btn-revoke-invitation').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const invId = btn.getAttribute('data-invitation-id');
+      if (!confirm('Are you sure you want to revoke this invitation link?')) return;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/circle/invitations/${invId}/revoke`, {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': getCsrfToken(),
+          },
+        });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          const data = await res.json();
+          alert(data.detail || 'Failed to revoke invitation.');
+        }
+      } catch (err) {
+        alert('Network error occurred.');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+</script>
+{% endblock %}

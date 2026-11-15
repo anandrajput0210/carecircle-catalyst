@@ -35,3 +35,18 @@ class CircleRepositoryInterface(ABC):
     async def list_members(self, circle_id: str) -> List[Dict[str, Any]]:
         """List all members belonging to a circle."""
         pass
+
+    @abstractmethod
+    async def update_circle(self, circle_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update care circle metadata and/or elder profile."""
+        pass
+
+    @abstractmethod
+    async def count_active_primary_caregivers(self, circle_id: str) -> int:
+        """Count active primary caregivers in the circle."""
+        pass
+
+    @abstractmethod
+    async def deactivate_member(self, circle_id: str, member_id: str) -> Dict[str, Any]:
+        """Soft-deactivate a member, record timestamp, and increment auth_version."""
+        pass

@@ -17,6 +17,16 @@ from app.models.auth import (
     RecoveryKeyResponse,
     AuthStatusResponse,
 )
+from app.models.circle import (
+    CircleUpdateRequest,
+    CircleDetailResponse,
+    CircleMemberDetailResponse,
+    InvitationCreateRequest,
+    InvitationDoc,
+    InvitationPublicResponse,
+    InvitationCreateResponse,
+    InvitationInspectResponse,
+)
 
 __all__ = [
     "MemberRole",
@@ -35,4 +45,12 @@ __all__ = [
     "CirclePublicResponse",
     "RecoveryKeyResponse",
     "AuthStatusResponse",
+    "CircleUpdateRequest",
+    "CircleDetailResponse",
+    "CircleMemberDetailResponse",
+    "InvitationCreateRequest",
+    "InvitationDoc",
+    "InvitationPublicResponse",
+    "InvitationCreateResponse",
+    "InvitationInspectResponse",
 ]

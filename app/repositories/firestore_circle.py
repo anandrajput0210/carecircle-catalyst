@@ -134,6 +134,29 @@ class FirestoreCircleRepository(CircleRepositoryInterface):
             _IN_MEMORY_CIRCLES[circle_id] = circle
         return circle
 
+    async def update_circle(self, circle_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update care circle metadata and/or elder profile."""
+        circle = await self.get_circle(circle_id)
+        if not circle:
+            raise ValueError(f"Circle {circle_id} not found.")
+        
+        # Merge top-level circle data
+        for k, v in data.items():
+            if k == "elder_profile" and isinstance(v, dict):
+                current_ep = circle.get("elder_profile", {})
+                current_ep.update(v)
+                circle["elder_profile"] = current_ep
+            else:
+                circle[k] = v
+
+        circle["updated_at"] = datetime.now(timezone.utc).isoformat()
+        c = self.client
+        if c is not None:
+            c.collection("care_circles").document(circle_id).set(circle, merge=True)
+        else:
+            _IN_MEMORY_CIRCLES[circle_id] = circle
+        return circle
+
     # -------------------------------------------------------------------------
     # Member Operations
     # -------------------------------------------------------------------------
@@ -249,6 +272,52 @@ class FirestoreCircleRepository(CircleRepositoryInterface):
         clean_update = context.validate_payload(data.copy())
         clean_update["member_id"] = member_id
         existing.update(clean_update)
+
+        c = self.client
+        if c is not None:
+            c.collection("circle_members").document(member_id).set(existing, merge=True)
+        else:
+            _IN_MEMORY_MEMBERS[member_id] = existing
+        return existing
+
+    async def count_active_primary_caregivers(self, circle_id: str) -> int:
+        """Count active primary caregivers in the circle."""
+        if not circle_id:
+            return 0
+        c = self.client
+        if c is not None:
+            docs = (
+                c.collection("circle_members")
+                .where("circle_id", "==", circle_id)
+                .where("role", "==", MemberRole.CAREGIVER.value)
+                .where("is_primary", "==", True)
+                .where("is_active", "==", True)
+                .get()
+            )
+            return len(docs)
+        count = 0
+        for mem in _IN_MEMORY_MEMBERS.values():
+            if (
+                mem.get("circle_id") == circle_id
+                and mem.get("role") == MemberRole.CAREGIVER.value
+                and mem.get("is_primary") is True
+                and mem.get("is_active") is True
+            ):
+                count += 1
+        return count
+
+    async def deactivate_member(self, circle_id: str, member_id: str) -> Dict[str, Any]:
+        """Soft-deactivate a member, record timestamp, and increment auth_version."""
+        existing = await self.get_member(circle_id, member_id)
+        if not existing:
+            raise ValueError(f"Member {member_id} not found in circle {circle_id}.")
+
+        now = datetime.now(timezone.utc).isoformat()
+        existing["is_active"] = False
+        existing["deactivated_at"] = now
+        existing["updated_at"] = now
+        current_version = existing.get("auth_version", 1)
+        existing["auth_version"] = int(current_version) + 1
 
         c = self.client
         if c is not None:

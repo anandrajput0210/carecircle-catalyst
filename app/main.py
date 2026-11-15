@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.routes.auth import router as auth_router
+from app.routes.circle import router as circle_router
 from app.services.csrf import generate_csrf_token, set_csrf_cookie
 from app.services.dependencies import get_optional_session
 from app.services.firestore import verify_firestore_health
@@ -76,10 +77,11 @@ async def sanitized_validation_exception_handler(request: Request, exc: RequestV
 
 
 # ============================================================================
-# Mount Authentication Routes
+# Mount Authentication & Circle Management Routes
 # ============================================================================
 
 app.include_router(auth_router)
+app.include_router(circle_router)
 
 
 # ============================================================================
