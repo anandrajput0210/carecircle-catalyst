@@ -29,9 +29,15 @@
       <!-- Header Navigation & Auth Controls -->
       <nav class="site-nav" aria-label="User navigation">
         {% if user %}
+          {% if user.role.value == 'elder' or user.role == 'elder' %}
+            <a href="/elder/doses" class="nav-link" id="nav-elder-doses">My Doses</a>
+          {% else %}
+            <a href="/medications" class="nav-link" id="nav-medications">Medications</a>
+            <a href="/elder/doses" class="nav-link" id="nav-elder-doses">Elder View</a>
+          {% endif %}
           <a href="/circle" class="nav-link" id="nav-circle">Care Circle</a>
           <span class="user-greeting" aria-label="Logged in as {{ user.display_name }}">
-            Hello, <strong>{{ user.display_name }}</strong> ({{ user.role.value | capitalize }})
+            Hello, <strong>{{ user.display_name }}</strong> ({{ (user.role.value if user.role.value is defined else user.role) | capitalize }})
           </span>
           <button id="btn-logout" class="btn btn-sm btn-outline" type="button" aria-label="Sign out of CareCircle">
             Sign Out

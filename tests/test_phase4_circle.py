@@ -66,7 +66,7 @@ def setup_primary_circle_and_login() -> tuple[TestClient, dict]:
     # Log in as primary caregiver
     csrf_login = make_csrf_headers(client)
     login_res = client.post(
-        "/api/auth/login",
+        "/auth/login",
         json={"username": "sarah_primary", "password": "PrimaryPassword123!"},
         headers=csrf_login["headers"],
     )

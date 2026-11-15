@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+
+{% block title %}Medications & Care Brief — CareCircle{% endblock %}
+
+{% block content %}
+<section class="medications-section" aria-labelledby="med-page-title">
+  <!-- Header Banner -->
+  <div class="hero">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <span class="badge badge-catalyst">Medication Safety &amp; Daily Schedule</span>
+        <h1 id="med-page-title" style="margin-bottom: 0.5rem;">Medication Management</h1>
+        <p class="lead" style="margin-bottom: 0.75rem;">
+          Prescriptions, synchronized daily dose schedule, and shared tamper-resistant dose ledger for <strong>{{ circle.elder_profile.get('name', 'Elder') if circle.elder_profile else 'Elder' }}</strong>.
+        </p>
+      </div>
+      <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+        {% if is_caregiver %}
+          <button id="btn-open-add-med" class="btn btn-primary" type="button" aria-haspopup="dialog">
+            &#43; Add Medication
+          </button>
+        {% endif %}
+        <a href="/elder/doses" class="btn btn-secondary" title="View Elder Touchscreen Interface">
+          &#128241; Elder View
+        </a>
+      </div>
+    </div>
+
+    <!-- Alert / Toast Container -->
+    <div id="med-alert" class="alert-box sr-only" role="alert" aria-live="assertive"></div>
+  </div>
+
+  <!-- Context-Aware Care Brief Banner (Zero Hallucinations) -->
+  <aside class="care-brief-banner care-brief-{{ care_brief.status_tone }}" aria-labelledby="care-brief-heading">
+    <div class="care-brief-headline" id="care-brief-heading">
+      {% if care_brief.status_tone == 'alert' %}
+        <span aria-hidden="true">&#9888;&#65039;</span>
+      {% elif care_brief.status_tone == 'warning' %}
+        <span aria-hidden="true">&#9200;</span>
+      {% elif care_brief.status_tone == 'success' %}
+        <span aria-hidden="true">&#9989;</span>
+      {% else %}
+        <span aria-hidden="true">&#8505;&#65039;</span>
+      {% endif %}
+      <span>{{ care_brief.headline }}</span>
+    </div>
+    <p class="care-brief-narrative">{{ care_brief.narrative }}</p>
+    <div class="care-brief-meta">
+      <span><strong>Scheduled Today:</strong> {{ care_brief.total_scheduled }}</span>
+      <span><strong>Taken:</strong> {{ care_brief.taken_count }}</span>
+      <span><strong>Due Now:</strong> {{ care_brief.due_count }}</span>
+      <span><strong>Overdue:</strong> {{ care_brief.overdue_count }}</span>
+      <span><strong>Active Prescriptions:</strong> {{ care_brief.active_prescriptions_count }}</span>
+    </div>
+    <div style="margin-top: 0.5rem; font-size: 0.85rem; opacity: 0.85;">
+      &#128274; <em>Generated deterministically from authorized circle prescriptions and confirmed dose records. Zero external LLM hallucinations.</em>
+    </div>
+  </aside>
+
+  <!-- Section 1: Today's Synchronized Schedule -->
+  <div class="card" style="margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem;">
+      <h2 style="font-size: 1.5rem; margin-bottom: 0;">
+        <span>&#128197;</span> Today's Dose Schedule
+      </h2>
+      <span style="font-size: 0.95rem; color: var(--color-text-muted);">
+        All circle members view the same real-time schedule
+      </span>
+    </div>
+
+    {% if schedule %}
+      <div class="table-responsive">
+        <table class="table" aria-label="Today's Dose Schedule">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Medication</th>
+              <th scope="col">Dosage</th>
+              <th scope="col">Instructions</th>
+              <th scope="col">Status</th>
+              <th scope="col">Action / Confirmation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in schedule %}
+              <tr id="dose-row-{{ item.dose_id }}">
+                <td style="font-weight: 700; white-space: nowrap;">
+                  {{ item.scheduled_time }}
+                </td>
+                <td style="font-weight: 700;">
+                  {{ item.medication_name }}
+                </td>
+                <td>{{ item.dosage }}</td>
+                <td>{{ item.instructions or "—" }}</td>
+                <td>
+                  <span class="badge badge-status-{{ item.status.value }}">
+                    {% if item.status.value == 'taken' %}&#10004; Taken
+                    {% elif item.status.value == 'due' %}&#9200; Due Now
+                    {% elif item.status.value == 'overdue' %}&#9888; Overdue
+                    {% elif item.status.value == 'upcoming' %}&#8987; Upcoming
+                    {% elif item.status.value == 'missed' %}&#10060; Missed
+                    {% elif item.status.value == 'paused' %}&#9208; Paused
+                    {% else %}{{ item.status.value | capitalize }}
+                    {% endif %}
+                  </span>
+                </td>
+                <td>
+                  {% if item.status.value == 'taken' %}
+                    <span style="font-size: 0.9rem; color: var(--color-success); font-weight: 600;">
+                      Recorded at {{ item.taken_at.strftime('%H:%M') if item.taken_at else '' }}
+                      {% if item.confirmed_by_name %}by {{ item.confirmed_by_name }}{% endif %}
+                    </span>
+                  {% elif item.can_confirm %}
+                    <button
+                      class="btn btn-sm btn-primary btn-confirm-dose"
+                      type="button"
+                      data-dose-id="{{ item.dose_id }}"
+                      data-med-name="{{ item.medication_name }}"
+                      data-dosage="{{ item.dosage }}"
+                      data-time="{{ item.scheduled_time }}"
+                      aria-label="Confirm dose of {{ item.medication_name }} for {{ item.scheduled_time }}">
+                      &#10003; Confirm Dose
+                    </button>
+                  {% else %}
+                    <span style="font-size: 0.9rem; color: var(--color-text-muted);">
+                      {% if item.status.value == 'paused' %}Regimen paused
+                      {% else %}Read-only visibility
+                      {% endif %}
+                    </span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="color: var(--color-text-muted); padding: 1.5rem 0; text-align: center;">
+        No doses scheduled for today. Add active medications below to populate the daily schedule.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Section 2: Active Prescriptions & Regimens -->
+  <div class="card" style="margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem;">
+      <h2 style="font-size: 1.5rem; margin-bottom: 0;">
+        <span>&#128138;</span> Prescriptions &amp; Regimens
+      </h2>
+      {% if is_caregiver %}
+        <button class="btn btn-sm btn-primary" type="button" onclick="document.getElementById('btn-open-add-med').click()">
+          &#43; Add Medication
+        </button>
+      {% endif %}
+    </div>
+
+    {% if medications %}
+      <div class="table-responsive">
+        <table class="table" aria-label="Prescriptions and Regimens">
+          <thead>
+            <tr>
+              <th scope="col">Medication</th>
+              <th scope="col">Dosage</th>
+              <th scope="col">Frequency</th>
+              <th scope="col">Scheduled Times</th>
+              <th scope="col">Instructions</th>
+              <th scope="col">Status</th>
+              {% if is_caregiver %}
+                <th scope="col">Actions</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for med in medications %}
+              <tr class="{% if med.is_paused or not med.is_active %}inactive-row{% endif %}" id="med-row-{{ med.medication_id }}">
+                <td style="font-weight: 700;">{{ med.name }}</td>
+                <td>{{ med.dosage }}</td>
+                <td>{{ med.frequency.value | capitalize }}</td>
+                <td>
+                  {% for t in med.times_of_day %}
+                    <span class="badge" style="margin-right: 0.25rem; margin-bottom: 0;">{{ t }}</span>
+                  {% endfor %}
+                </td>
+                <td>{{ med.instructions or "—" }}</td>
+                <td>
+                  {% if not med.is_active %}
+                    <span class="badge badge-status-inactive">Deactivated</span>
+                  {% elif med.is_paused %}
+                    <span class="badge badge-status-paused">&#9208; Paused</span>
+                  {% else %}
+                    <span class="badge badge-status-active">&#9679; Active</span>
+                  {% endif %}
+                </td>
+                {% if is_caregiver %}
+                  <td>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                      {% if med.is_active %}
+                        <button
+                          class="btn btn-sm btn-secondary btn-toggle-pause"
+                          type="button"
+                          data-med-id="{{ med.medication_id }}"
+                          data-is-paused="{{ 'true' if med.is_paused else 'false' }}"
+                          data-med-name="{{ med.name }}">
+                          {% if med.is_paused %}Resume{% else %}Pause{% endif %}
+                        </button>
+                        <button
+                          class="btn btn-sm btn-danger btn-deactivate-med"
+                          type="button"
+                          data-med-id="{{ med.medication_id }}"
+                          data-med-name="{{ med.name }}">
+                          Deactivate
+                        </button>
+                      {% else %}
+                        <span style="font-size: 0.85rem; color: var(--color-text-muted);">Inactive</span>
+                      {% endif %}
+                    </div>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="color: var(--color-text-muted); padding: 1.5rem 0; text-align: center;">
+        No active prescriptions recorded. Caregivers can add medications above.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Section 3: Shared Dose Ledger Audit Trail -->
+  <div class="card" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem;">
+      <span>&#128221;</span> Shared Dose Ledger (Tamper-Resistant Audit Trail)
+    </h2>
+    <p style="color: var(--color-text-muted); font-size: 0.95rem; margin-bottom: 1.25rem;">
+      Every confirmed dose is immutably logged with recorder identity, timestamp, and verification method to prevent accidental double-dosing.
+    </p>
+
+    {% if ledger %}
+      <div class="table-responsive">
+        <table class="table" aria-label="Dose Ledger Audit Trail">
+          <thead>
+            <tr>
+              <th scope="col">Recorded At</th>
+              <th scope="col">Medication &amp; Dosage</th>
+              <th scope="col">Scheduled Time</th>
+              <th scope="col">Confirmed By</th>
+              <th scope="col">Method</th>
+              <th scope="col">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in ledger %}
+              <tr>
+                <td style="white-space: nowrap; font-size: 0.95rem;">
+                  {{ event.recorded_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                </td>
+                <td style="font-weight: 700;">
+                  {{ event.medication_name }} <span style="font-weight: 400; color: var(--color-text-muted);">({{ event.dosage }})</span>
+                </td>
+                <td>{{ event.scheduled_date }} at {{ event.scheduled_time }}</td>
+                <td>
+                  <strong>{{ event.confirmed_by_name }}</strong>
+                  <span class="badge badge-role" style="font-size: 0.75rem; margin-left: 0.25rem;">{{ event.confirmed_by_role }}</span>
+                </td>
+                <td>
+                  <span class="badge">{{ event.confirmed_method }}</span>
+                </td>
+                <td style="font-size: 0.9rem; color: var(--color-text-muted);">
+                  {{ event.notes or "—" }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p style="color: var(--color-text-muted); padding: 1.5rem 0; text-align: center;">
+        No dose events logged yet. Once doses are confirmed by the elder or caregiver, the audit history will appear here.
+      </p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ============================================================================
+     Modals
+     ============================================================================ -->
+
+<!-- Add Medication Modal -->
+<div id="modal-add-med" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-add-title" class="modal-title">&#43; Add New Medication</h3>
+      <button class="modal-close" type="button" aria-label="Close dialog" data-close="modal-add-med">&times;</button>
+    </div>
+    <form id="form-add-med" novalidate>
+      <div class="form-group">
+        <label for="med-name" class="form-label">Medication Name *</label>
+        <input type="text" id="med-name" name="name" class="form-input" placeholder="e.g. Lisinopril, Metformin" required>
+      </div>
+
+      <div class="form-group">
+        <label for="med-dosage" class="form-label">Dosage *</label>
+        <input type="text" id="med-dosage" name="dosage" class="form-input" placeholder="e.g. 10 mg (1 tablet), 500 mg" required>
+      </div>
+
+      <div class="form-group">
+        <label for="med-frequency" class="form-label">Frequency *</label>
+        <select id="med-frequency" name="frequency" class="form-input" required>
+          <option value="daily">Daily</option>
+          <option value="twice_daily">Twice Daily</option>
+          <option value="three_times_daily">Three Times Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="as_needed">As Needed</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="med-times" class="form-label">Scheduled Times (HH:MM 24-hour, comma-separated) *</label>
+        <input type="text" id="med-times" name="times_of_day" class="form-input" placeholder="08:00, 20:00" required>
+        <small style="color: var(--color-text-muted); display: block; margin-top: 0.25rem;">
+          Example: "08:00" for morning, "08:00, 20:00" for twice daily.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label for="med-instructions" class="form-label">Care Instructions (Optional)</label>
+        <textarea id="med-instructions" name="instructions" class="form-input" rows="2" placeholder="e.g. Take with water after breakfast"></textarea>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="form-group">
+          <label for="med-start-date" class="form-label">Start Date *</label>
+          <input type="date" id="med-start-date" name="start_date" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label for="med-end-date" class="form-label">End Date (Optional)</label>
+          <input type="date" id="med-end-date" name="end_date" class="form-input">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="modal-add-med">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-submit-add-med">Save Medication</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm Dose Modal -->
+<div id="modal-confirm-dose" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-confirm-title" class="modal-title">&#10003; Confirm Dose Administration</h3>
+      <button class="modal-close" type="button" aria-label="Close dialog" data-close="modal-confirm-dose">&times;</button>
+    </div>
+    <form id="form-confirm-dose" novalidate>
+      <input type="hidden" id="confirm-dose-id" name="dose_id">
+      <p style="margin-bottom: 1rem;">
+        Recording dose of <strong id="confirm-med-name"></strong> (<span id="confirm-dosage"></span>) scheduled for <strong id="confirm-time"></strong>.
+      </p>
+
+      <div class="form-group">
+        <label for="confirm-method" class="form-label">Confirmation Method</label>
+        <select id="confirm-method" name="method" class="form-input">
+          <option value="observed">Observed (Caregiver watched elder take it)</option>
+          <option value="administered">Administered (Caregiver handed directly)</option>
+          <option value="self_reported">Self-Reported (Elder confirmed via phone/chat)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="confirm-notes" class="form-label">Notes (Optional)</label>
+        <input type="text" id="confirm-notes" name="notes" class="form-input" placeholder="e.g. Taken with light snack">
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="modal-confirm-dose">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-submit-confirm-dose">Record as Taken</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Medication Management Front-end Logic
+  document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const alertBox = document.getElementById('med-alert');
+
+    function showAlert(message, isError = false) {
+      if (!alertBox) return;
+      alertBox.textContent = message;
+      alertBox.className = isError ? 'alert-box alert-box-error' : 'alert-box alert-box-success';
+      alertBox.classList.remove('sr-only');
+      alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const announcer = document.getElementById('live-announcer');
+      if (announcer) announcer.textContent = message;
+    }
+
+    // Modal helpers
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.add('hidden');
+    }
+
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.addEventListener('click', function () {
+        closeModal(this.getAttribute('data-close'));
+      });
+    });
+
+    // Today default start date
+    const startDateInput = document.getElementById('med-start-date');
+    if (startDateInput && !startDateInput.value) {
+      startDateInput.value = new Date().toISOString().split('T')[0];
+    }
+
+    // Open Add Med Modal
+    const btnOpenAdd = document.getElementById('btn-open-add-med');
+    if (btnOpenAdd) {
+      btnOpenAdd.addEventListener('click', () => openModal('modal-add-med'));
+    }
+
+    // Add Med Form Submit
+    const formAddMed = document.getElementById('form-add-med');
+    if (formAddMed) {
+      formAddMed.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const submitBtn = document.getElementById('btn-submit-add-med');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+
+        const rawTimes = document.getElementById('med-times').value;
+        const timesArray = rawTimes.split(',').map(s => s.trim()).filter(Boolean);
+
+        const payload = {
+          name: document.getElementById('med-name').value.trim(),
+          dosage: document.getElementById('med-dosage').value.trim(),
+          frequency: document.getElementById('med-frequency').value,
+          times_of_day: timesArray,
+          instructions: document.getElementById('med-instructions').value.trim() || null,
+          start_date: document.getElementById('med-start-date').value,
+          end_date: document.getElementById('med-end-date').value || null,
+        };
+
+        try {
+          const res = await fetch('/api/medications', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            showAlert('Medication added successfully! Reloading...');
+            closeModal('modal-add-med');
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            showAlert(data.detail || 'Failed to add medication. Please check your inputs.', true);
+          }
+        } catch (err) {
+          showAlert('Network error saving medication.', true);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Save Medication';
+        }
+      });
+    }
+
+    // Confirm Dose Button handler
+    document.querySelectorAll('.btn-confirm-dose').forEach(btn => {
+      btn.addEventListener('click', function () {
+        document.getElementById('confirm-dose-id').value = this.getAttribute('data-dose-id');
+        document.getElementById('confirm-med-name').textContent = this.getAttribute('data-med-name');
+        document.getElementById('confirm-dosage').textContent = this.getAttribute('data-dosage');
+        document.getElementById('confirm-time').textContent = this.getAttribute('data-time');
+        openModal('modal-confirm-dose');
+      });
+    });
+
+    // Confirm Dose Form Submit
+    const formConfirmDose = document.getElementById('form-confirm-dose');
+    if (formConfirmDose) {
+      formConfirmDose.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const submitBtn = document.getElementById('btn-submit-confirm-dose');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Recording...';
+
+        const doseId = document.getElementById('confirm-dose-id').value;
+        const payload = {
+          method: document.getElementById('confirm-method').value,
+          notes: document.getElementById('confirm-notes').value.trim() || null,
+        };
+
+        try {
+          const res = await fetch(`/api/medications/doses/${encodeURIComponent(doseId)}/confirm`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            showAlert('Dose successfully recorded as taken! Reloading...');
+            closeModal('modal-confirm-dose');
+            setTimeout(() => window.location.reload(), 800);
+          } else if (res.status === 409) {
+            showAlert(`Duplicate prevented: ${data.detail || 'Dose has already been confirmed.'}`, true);
+            closeModal('modal-confirm-dose');
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            showAlert(data.detail || 'Failed to confirm dose.', true);
+          }
+        } catch (err) {
+          showAlert('Network error confirming dose.', true);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Record as Taken';
+        }
+      });
+    }
+
+    // Toggle Pause Button
+    document.querySelectorAll('.btn-toggle-pause').forEach(btn => {
+      btn.addEventListener('click', async function () {
+        const medId = this.getAttribute('data-med-id');
+        const medName = this.getAttribute('data-med-name');
+        const isPaused = this.getAttribute('data-is-paused') === 'true';
+        const action = isPaused ? 'resume' : 'pause';
+
+        if (!confirm(`Are you sure you want to ${action} ${medName}?`)) return;
+
+        this.disabled = true;
+        try {
+          const res = await fetch(`/api/medications/${encodeURIComponent(medId)}/pause`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({ is_paused: !isPaused }),
+          });
+
+          if (res.ok) {
+            showAlert(`Medication ${medName} ${isPaused ? 'resumed' : 'paused'}. Reloading...`);
+            setTimeout(() => window.location.reload(), 800);
+          } else {
+            const data = await res.json();
+            showAlert(data.detail || `Failed to ${action} medication.`, true);
+            this.disabled = false;
+          }
+        } catch (err) {
+          showAlert('Network error updating medication status.', true);
+          this.disabled = false;
+        }
+      });
+    });
+
+    // Deactivate Button
+    document.querySelectorAll('.btn-deactivate-med').forEach(btn => {
+      btn.addEventListener('click', async function () {
+        const medId = this.getAttribute('data-med-id');
+        const medName = this.getAttribute('data-med-name');
+
+        if (!confirm(`Are you sure you want to deactivate ${medName}? This will discontinue the prescription and remove upcoming doses.`)) return;
+
+        this.disabled = true;
+        try {
+          const res = await fetch(`/api/medications/${encodeURIComponent(medId)}`, {
+            method: 'DELETE',
+            headers: {
+              'X-CSRF-Token': csrfToken,
+            },
+          });
+
+          if (res.ok) {
+            showAlert(`Medication ${medName} deactivated. Reloading...`);
+            setTimeout(() => window.location.reload(), 800);
+          } else {
+            const data = await res.json();
+            showAlert(data.detail || 'Failed to deactivate medication.', true);
+            this.disabled = false;
+          }
+        } catch (err) {
+          showAlert('Network error deactivating medication.', true);
+          this.disabled = false;
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

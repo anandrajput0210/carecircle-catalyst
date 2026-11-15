@@ -65,8 +65,10 @@ class CircleService:
         elder_profile_updates: Dict[str, Any] = {}
         if payload.elder_name is not None:
             elder_profile_updates["name"] = payload.elder_name
+            elder_profile_updates["elder_name"] = payload.elder_name
         if payload.elder_dob is not None:
             elder_profile_updates["dob"] = payload.elder_dob
+            elder_profile_updates["elder_dob"] = payload.elder_dob
         if payload.primary_condition is not None:
             elder_profile_updates["primary_condition"] = payload.primary_condition
         if payload.emergency_phone is not None:
@@ -115,7 +117,14 @@ class CircleService:
 
     async def get_circle_member(self, circle_id: str, member_id: str) -> CircleMemberDetailResponse:
         """Retrieve a single member document ensuring circle isolation."""
-        member = await self.circle_repo.get_member(circle_id, member_id)
+        from app.services.firestore import CircleIsolationViolation
+        try:
+            member = await self.circle_repo.get_member(circle_id, member_id)
+        except CircleIsolationViolation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Member {member_id} not found in care circle.",
+            )
         if not member:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -143,7 +152,14 @@ class CircleService:
                 detail="Security violation: member circle does not match requested circle.",
             )
 
-        target = await self.circle_repo.get_member(circle_id, target_member_id)
+        from app.services.firestore import CircleIsolationViolation
+        try:
+            target = await self.circle_repo.get_member(circle_id, target_member_id)
+        except CircleIsolationViolation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Member {target_member_id} not found in care circle.",
+            )
         if not target:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

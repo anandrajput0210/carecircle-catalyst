@@ -6,20 +6,30 @@ from app.config import settings
 from app.models.auth import MemberDoc, MemberRole, SessionData
 from app.repositories.firestore_circle import FirestoreCircleRepository
 from app.repositories.firestore_invitation import FirestoreInvitationRepository
+from app.repositories.firestore_ledger import FirestoreDoseLedgerRepository
+from app.repositories.firestore_medication import FirestoreMedicationRepository
 from app.services.circle import CircleService
 from app.services.firestore import CircleSecurityContext
 from app.services.invitation import InvitationService
+from app.services.medication import MedicationService
 from app.services.session import SessionService
 
 # Singleton instances for dependency injection
 _circle_repo = FirestoreCircleRepository()
 _invitation_repo = FirestoreInvitationRepository()
+_medication_repo = FirestoreMedicationRepository()
+_ledger_repo = FirestoreDoseLedgerRepository()
 _session_service = SessionService(circle_repo=_circle_repo)
 _circle_service = CircleService(circle_repo=_circle_repo)
 _invitation_service = InvitationService(
     invitation_repo=_invitation_repo,
     circle_repo=_circle_repo,
     session_service=_session_service,
+)
+_medication_service = MedicationService(
+    med_repo=_medication_repo,
+    ledger_repo=_ledger_repo,
+    circle_repo=_circle_repo,
 )
 
 
@@ -31,6 +41,16 @@ def get_circle_repository() -> FirestoreCircleRepository:
 def get_invitation_repository() -> FirestoreInvitationRepository:
     """Dependency provider for FirestoreInvitationRepository."""
     return _invitation_repo
+
+
+def get_medication_repository() -> FirestoreMedicationRepository:
+    """Dependency provider for FirestoreMedicationRepository."""
+    return _medication_repo
+
+
+def get_dose_ledger_repository() -> FirestoreDoseLedgerRepository:
+    """Dependency provider for FirestoreDoseLedgerRepository."""
+    return _ledger_repo
 
 
 def get_session_service() -> SessionService:
@@ -46,6 +66,11 @@ def get_circle_service() -> CircleService:
 def get_invitation_service() -> InvitationService:
     """Dependency provider for InvitationService."""
     return _invitation_service
+
+
+def get_medication_service() -> MedicationService:
+    """Dependency provider for MedicationService."""
+    return _medication_service
 
 
 def get_current_session_token(request: Request) -> Optional[str]:

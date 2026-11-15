@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}My Medicines Today — CareCircle{% endblock %}
+
+{% block content %}
+<div class="elder-view-container">
+  <!-- Friendly Elder Header -->
+  <header style="margin-bottom: 2rem; text-align: center;">
+    <span class="badge badge-catalyst" style="font-size: 1.15rem; padding: 0.5rem 1.25rem;">
+      &#128154; Daily Medicine Helper
+    </span>
+    <h1 style="font-size: 2.25rem; font-weight: 800; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+      Today's Medicines
+    </h1>
+    <p style="font-size: 1.35rem; color: var(--color-text-muted);">
+      Hello, <strong>{{ circle.elder_profile.get('name', user.display_name) if circle.elder_profile else user.display_name }}</strong>!
+    </p>
+  </header>
+
+  <!-- Live Announcer & Feedback Toast for Elder -->
+  <div id="elder-feedback" class="alert-box sr-only" role="alert" aria-live="assertive" style="font-size: 1.25rem; text-align: center; margin-bottom: 1.5rem;"></div>
+
+  <!-- Care Brief Summary for Elder -->
+  {% if care_brief.overdue_count > 0 %}
+    <div class="care-brief-banner care-brief-alert" role="status" style="margin-bottom: 2rem;">
+      <div class="care-brief-headline" style="font-size: 1.4rem;">
+        &#9888;&#65039; You have {{ care_brief.overdue_count }} medicine{{ 's' if care_brief.overdue_count > 1 else '' }} past scheduled time.
+      </div>
+      <p style="font-size: 1.2rem; margin: 0;">Please check with your caregiver or take it now if recommended.</p>
+    </div>
+  {% elif care_brief.due_count > 0 %}
+    <div class="care-brief-banner care-brief-warning" role="status" style="margin-bottom: 2rem;">
+      <div class="care-brief-headline" style="font-size: 1.4rem;">
+        &#9200; It's time for your medicine!
+      </div>
+      <p style="font-size: 1.2rem; margin: 0;">You have {{ care_brief.due_count }} dose ready to take now.</p>
+    </div>
+  {% elif care_brief.total_scheduled > 0 and care_brief.taken_count == care_brief.total_scheduled %}
+    <div class="care-brief-banner care-brief-success" role="status" style="margin-bottom: 2rem; text-align: center;">
+      <div class="care-brief-headline" style="font-size: 1.5rem; justify-content: center;">
+        &#9989; All Done for Today!
+      </div>
+      <p style="font-size: 1.25rem; margin: 0;">Great job! You have taken all your scheduled medicines for today.</p>
+    </div>
+  {% endif %}
+
+  <!-- Dose Cards List -->
+  <main id="elder-dose-list" aria-label="List of today's medicines">
+    {% if schedule %}
+      {% for item in schedule %}
+        <article
+          class="elder-dose-card {% if item.status.value == 'due' %}card-due{% elif item.status.value == 'overdue' %}card-overdue{% elif item.status.value == 'taken' %}card-taken{% endif %}"
+          id="elder-card-{{ item.dose_id }}"
+          aria-labelledby="dose-title-{{ item.dose_id }}">
+
+          <!-- Card Header / Time & Status -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="font-size: 1.5rem; font-weight: 800; color: var(--color-primary);">
+              &#128338; {{ item.scheduled_time }}
+            </div>
+            <div>
+              <span class="badge badge-status-{{ item.status.value }}" style="font-size: 1rem; padding: 0.4rem 0.85rem;">
+                {% if item.status.value == 'taken' %}&#10004; Taken
+                {% elif item.status.value == 'due' %}&#9200; Ready Now
+                {% elif item.status.value == 'overdue' %}&#9888; Overdue
+                {% elif item.status.value == 'upcoming' %}&#8987; Scheduled Later
+                {% elif item.status.value == 'paused' %}&#9208; Paused
+                {% else %}{{ item.status.value | capitalize }}
+                {% endif %}
+              </span>
+            </div>
+          </div>
+
+          <!-- Medication Name & Dosage -->
+          <h2 class="elder-med-name" id="dose-title-{{ item.dose_id }}">
+            {{ item.medication_name }}
+          </h2>
+          <div class="elder-med-dosage">
+            Amount: <strong>{{ item.dosage }}</strong>
+          </div>
+
+          <!-- Instructions -->
+          {% if item.instructions %}
+            <div class="elder-med-instructions">
+              &#128161; <strong>How to take:</strong> {{ item.instructions }}
+            </div>
+          {% endif %}
+
+          <!-- Action / Confirmation Button -->
+          <div style="margin-top: 1.5rem;">
+            {% if item.status.value == 'taken' %}
+              <div class="elder-taken-banner" role="status">
+                &#10004; Taken at {{ item.taken_at.strftime('%H:%M') if item.taken_at else '' }}
+                {% if item.confirmed_by_name %} (recorded by {{ item.confirmed_by_name }}){% endif %}
+              </div>
+            {% elif item.can_confirm %}
+              <button
+                class="elder-confirm-btn btn-elder-action"
+                type="button"
+                data-dose-id="{{ item.dose_id }}"
+                data-med-name="{{ item.medication_name }}"
+                aria-label="Confirm I took my {{ item.medication_name }} dose for {{ item.scheduled_time }}">
+                <span aria-hidden="true" style="font-size: 1.8rem;">&#10003;</span>
+                <span>I TOOK THIS MEDICINE</span>
+              </button>
+            {% elif item.status.value == 'paused' %}
+              <div style="font-size: 1.15rem; color: var(--color-text-muted); padding: 0.75rem 0;">
+                &#9208; This medicine is temporarily paused by your caregiver.
+              </div>
+            {% else %}
+              <div style="font-size: 1.15rem; color: var(--color-text-muted); padding: 0.75rem 0;">
+                &#128065; Read-only mode (caregiver or elder can record).
+              </div>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    {% else %}
+      <div class="card" style="text-align: center; padding: 3rem 1.5rem;">
+        <span style="font-size: 3rem; display: block; margin-bottom: 1rem;">&#128156;</span>
+        <h2 style="font-size: 1.75rem; margin-bottom: 0.5rem;">No medicines scheduled today</h2>
+        <p style="font-size: 1.25rem; color: var(--color-text-muted);">
+          Your caregivers have not added any medicines scheduled for today.
+        </p>
+      </div>
+    {% endif %}
+  </main>
+
+  <!-- Back to Care Circle Link -->
+  <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
+    <a href="/circle" class="btn btn-secondary" style="font-size: 1.15rem; min-height: 3.5rem; padding: 0.85rem 2rem;">
+      &#8592; Back to Care Circle Overview
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Elder Accessible Dose Confirmation Logic
+  document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const feedbackBox = document.getElementById('elder-feedback');
+
+    function announceElder(message, isError = false) {
+      if (feedbackBox) {
+        feedbackBox.textContent = message;
+        feedbackBox.className = isError ? 'alert-box alert-box-error' : 'alert-box alert-box-success';
+        feedbackBox.classList.remove('sr-only');
+        feedbackBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      const announcer = document.getElementById('live-announcer');
+      if (announcer) announcer.textContent = message;
+
+      // Audio / Speech Announcement for Accessibility
+      if ('speechSynthesis' in window && !isError) {
+        try {
+          const utterance = new SpeechSynthesisUtterance(message);
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          // Non-blocking fallback
+        }
+      }
+    }
+
+    document.querySelectorAll('.btn-elder-action').forEach(btn => {
+      btn.addEventListener('click', async function () {
+        const doseId = this.getAttribute('data-dose-id');
+        const medName = this.getAttribute('data-med-name');
+
+        this.disabled = true;
+        this.innerHTML = '<span>Saving...</span>';
+
+        try {
+          const res = await fetch(`/api/medications/doses/${encodeURIComponent(doseId)}/confirm`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({
+              method: 'self_reported',
+              notes: 'Confirmed by elder via one-tap touch interface'
+            }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            announceElder(`Medicine recorded! Good job taking your ${medName}.`);
+            setTimeout(() => window.location.reload(), 1200);
+          } else if (res.status === 409) {
+            announceElder(`This dose was already taken! No need to take it again.`, true);
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            announceElder(data.detail || 'Could not record medicine. Please ask your caregiver.', true);
+            this.disabled = false;
+            this.innerHTML = '<span aria-hidden="true">&#10003;</span><span>I TOOK THIS MEDICINE</span>';
+          }
+        } catch (err) {
+          announceElder('Connection error. Please try again or ask your caregiver.', true);
+          this.disabled = false;
+          this.innerHTML = '<span aria-hidden="true">&#10003;</span><span>I TOOK THIS MEDICINE</span>';
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

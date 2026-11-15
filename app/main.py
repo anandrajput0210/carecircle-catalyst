@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.routes.auth import router as auth_router
 from app.routes.circle import router as circle_router
+from app.routes.medication import router as medication_router
 from app.services.csrf import generate_csrf_token, set_csrf_cookie
 from app.services.dependencies import get_optional_session
 from app.services.firestore import verify_firestore_health
@@ -57,7 +58,8 @@ async def sanitized_validation_exception_handler(request: Request, exc: RequestV
         # Sanitize context dictionary if present
         if "ctx" in err_copy and isinstance(err_copy["ctx"], dict):
             err_copy["ctx"] = {
-                k: v for k, v in err_copy["ctx"].items()
+                k: (str(v) if isinstance(v, Exception) else v)
+                for k, v in err_copy["ctx"].items()
                 if "password" not in k.lower()
                 and "pin" not in k.lower()
                 and "secret" not in k.lower()
@@ -77,11 +79,12 @@ async def sanitized_validation_exception_handler(request: Request, exc: RequestV
 
 
 # ============================================================================
-# Mount Authentication & Circle Management Routes
+# Mount Authentication, Circle Management & Medication Routes
 # ============================================================================
 
 app.include_router(auth_router)
 app.include_router(circle_router)
+app.include_router(medication_router)
 
 
 # ============================================================================

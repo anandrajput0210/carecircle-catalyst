@@ -101,6 +101,7 @@ async def get_current_auth_status(
 # ============================================================================
 
 @router.post("/auth/login")
+@router.post("/api/auth/login")
 async def caregiver_login(
     payload: LoginRequest,
     request: Request,
@@ -204,6 +205,7 @@ async def caregiver_login(
 # ============================================================================
 
 @router.post("/auth/elder-login")
+@router.post("/api/auth/elder-login")
 async def elder_login(
     payload: ElderLoginRequest,
     request: Request,
@@ -364,7 +366,9 @@ async def setup_initial_circle(
 
     # 5. Create Circle Document
     elder_profile = {
+        "name": payload.elder_name,
         "elder_name": payload.elder_name,
+        "dob": payload.elder_dob,
         "elder_dob": payload.elder_dob,
         "primary_condition": payload.primary_condition,
         "emergency_phone": payload.emergency_phone,

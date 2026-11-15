@@ -217,6 +217,10 @@ async def inspect_invitation(
     "/api/invitations/accept",
     summary="Accept an invitation and register account (Public)",
 )
+@router.post(
+    "/api/circle/invitations/accept",
+    summary="Accept an invitation and register account (Alias)",
+)
 async def accept_invitation(
     payload: MemberJoinRequest,
     request: Request,

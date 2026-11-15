@@ -812,3 +812,204 @@ main {
   font-size: 0.95rem;
   padding: 0.25rem;
 }
+
+/* ============================================================================
+   Phase 5: Medication Management, Dose Ledger & Elder Doses Interface
+   ============================================================================ */
+
+/* Dose Status Badges */
+.badge-status-upcoming {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
+
+.badge-status-due {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 2px solid #f59e0b;
+  font-weight: 800;
+}
+
+.badge-status-taken {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.badge-status-overdue {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #ef4444;
+  font-weight: 800;
+}
+
+.badge-status-missed {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-status-paused {
+  background-color: #f5f3ff;
+  color: #5b21b6;
+  border: 1px solid #c4b5fd;
+}
+
+/* Care Brief Banner */
+.care-brief-banner {
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 2px solid var(--color-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.care-brief-alert {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.care-brief-warning {
+  background-color: #fffbeb;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.care-brief-success {
+  background-color: #f0fdf4;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.care-brief-neutral {
+  background-color: var(--color-surface-raised);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.care-brief-headline {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.care-brief-narrative {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.care-brief-meta {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+/* Elder View — High Contrast, Large Touch Targets (WCAG AAA) */
+.elder-view-container {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.elder-dose-card {
+  background-color: var(--color-surface);
+  border: 3px solid var(--color-border-strong);
+  border-radius: 1rem;
+  padding: 1.75rem;
+  margin-bottom: 1.75rem;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.elder-dose-card:focus-within {
+  border-color: var(--color-focus);
+}
+
+.elder-dose-card.card-due {
+  border-color: #f59e0b;
+  border-width: 4px;
+  background-color: #fffdf5;
+}
+
+.elder-dose-card.card-overdue {
+  border-color: #ef4444;
+  border-width: 4px;
+  background-color: #fff5f5;
+}
+
+.elder-dose-card.card-taken {
+  border-color: #22c55e;
+  background-color: #f0fdf4;
+}
+
+.elder-med-name {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.elder-med-dosage {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 0.75rem;
+}
+
+.elder-med-instructions {
+  font-size: 1.15rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.elder-confirm-btn {
+  width: 100%;
+  min-height: 4.25rem;
+  font-size: 1.4rem;
+  font-weight: 800;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background-color: #15803d;
+  color: #ffffff;
+  border: 3px solid #166534;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.elder-confirm-btn:hover, .elder-confirm-btn:focus-visible {
+  background-color: #166534;
+  transform: translateY(-2px);
+  outline: 4px solid var(--color-focus);
+}
+
+.elder-confirm-btn:disabled {
+  background-color: #94a3b8;
+  border-color: #64748b;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.elder-taken-banner {
+  padding: 1rem 1.25rem;
+  background-color: #dcfce7;
+  border: 2px solid #86efac;
+  border-radius: 0.75rem;
+  color: #166534;
+  font-size: 1.2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
